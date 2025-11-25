@@ -83,12 +83,47 @@ def calculate_comorbidity_load(prior_stroke, active_chemo, liver_disease, high_b
 
 # D. Interaction Database
 interaction_db = {
+    ("warfarin", "amiodarone"): "MAJOR: Amiodarone increases INR significantly. Reduce Warfarin dose by 30-50%.",
+    ("warfarin", "ibuprofen"): "MAJOR: NSAIDs increase bleeding risk and damage gastric mucosa.",
+    ("lisinopril", "spironolactone"): "MAJOR: Risk of severe hyperkalemia (high potassium). Monitor K+.",
     ("sildenafil", "nitroglycerin"): "CRITICAL: Fatal hypotension. Contraindicated.",
     ("methotrexate", "trimethoprim"): "CRITICAL: Bone marrow toxicity. Avoid.",
-    ("warfarin", "ibuprofen"): "MAJOR: Increased bleeding risk.",
-    ("lisinopril", "spironolactone"): "MAJOR: Hyperkalemia risk.",
-    ("simvastatin", "amiodarone"): "MAJOR: Rhabdomyolysis risk.",
-    ("ciprofloxacin", "ondansetron"): "MAJOR: QT Prolongation risk.",
+    ("simvastatin", "amiodarone"): "MAJOR: Rhabdomyolysis risk. Simvastatin dose should not exceed 20mg.",
+
+    # --- NEW ADDITIONS (20+ High-Impact Checks) ---
+    
+    # 1. THE "SILENT KILLERS" (Hyperkalemia & Arrhythmia)
+    ("spironolactone", "trimethoprim"): "CRITICAL: High risk of sudden death from Hyperkalemia (Spironolactone + Bactrim).",
+    ("ciprofloxacin", "ondansetron"): "MAJOR: QT Prolongation risk. Monitor ECG.",
+    ("levofloxacin", "ondansetron"): "MAJOR: QT Prolongation risk. Monitor ECG.",
+    ("citalopram", "fluconazole"): "MAJOR: QT Prolongation risk. Avoid high doses.",
+    
+    # 2. RESPIRATORY DEPRESSION (Black Box Warnings)
+    ("oxycodone", "lorazepam"): "CRITICAL: Respiratory depression/Sedation risk (Opioid + Benzo).",
+    ("hydrocodone", "alprazolam"): "CRITICAL: Respiratory depression/Sedation risk (Opioid + Benzo).",
+    ("fentanyl", "midazolam"): "CRITICAL: Severe respiratory depression.",
+    
+    # 3. BLEEDING RISKS (Beyond Warfarin)
+    ("warfarin", "ciprofloxacin"): "MAJOR: Antibiotics kill gut flora, spiking INR. Monitor closely.",
+    ("warfarin", "fluconazole"): "MAJOR: Fluconazole inhibits CYP2C9, dramatically raising INR.",
+    ("warfarin", "acetaminophen"): "MODERATE: High/Chronic Tylenol use can elevate INR.",
+    ("clopidogrel", "omeprazole"): "MAJOR: Omeprazole blocks CYP2C19, making Plavix ineffective.",
+    
+    # 4. SEROTONIN SYNDROME (Agitation, Seizures, High Fever)
+    ("tramadol", "fluoxetine"): "MAJOR: Risk of Serotonin Syndrome and Seizures.",
+    ("sertraline", "linezolid"): "CRITICAL: Linezolid is an MAOI. Fatal Serotonin Syndrome risk.",
+    ("cyclobenzaprine", "duloxetine"): "MODERATE: Increased risk of Serotonin Syndrome.",
+    
+    # 5. TOXICITY & ABSORPTION FAILURES
+    ("lithium", "lisinopril"): "MAJOR: ACE Inhibitors reduce Lithium excretion -> Lithium Toxicity.",
+    ("lithium", "ibuprofen"): "MAJOR: NSAIDs reduce Lithium excretion -> Lithium Toxicity.",
+    ("digoxin", "clarithromycin"): "MAJOR: Macrolides block P-gp -> Digoxin Toxicity.",
+    ("levothyroxine", "calcium"): "MODERATE: Calcium blocks Thyroid absorption. Separate by 4 hours.",
+    ("doxycycline", "iron"): "MODERATE: Iron binds to antibiotic, causing treatment failure.",
+    
+    # 6. NEUROLOGICAL RISKS
+    ("phenytoin", "oral contraceptives"): "MAJOR: Phenytoin induces enzymes, causing contraceptive failure.",
+    ("carbamazepine", "erythromycin"): "MAJOR: Erythromycin increases Carbamazepine levels (Toxicity).",
 }
 
 def check_interaction(d1, d2):
@@ -100,11 +135,44 @@ def check_interaction(d1, d2):
 # E. Chatbot Logic
 def chatbot_response(text):
     text = text.lower()
+    
+    # --- DISEASE & CONDITION DEFINITIONS (New) ---
+    conditions = {
+        "sepsis": "Sepsis is a life-threatening response to infection. Watch for: Fever, Hypotension, Tachycardia, Confusion (qSOFA score).",
+        "pneumonia": "Infection inflaming air sacs. Symptoms: Cough with phlegm, fever, chills, difficulty breathing.",
+        "heart failure": "CHF occurs when the heart doesn't pump blood as well as it should. Watch for: Edema, Dyspnea, Fatigue.",
+        "copd": "Chronic Obstructive Pulmonary Disease. Chronic inflammatory lung disease obstructing airflow. key: Smoking history.",
+        "afib": "Atrial Fibrillation: Irregular, rapid heart rate. Risk of Stroke. Treatment often involves anticoagulants (Warfarin/Eliquis).",
+        "stroke": "CVA (Stroke) is a medical emergency. BE-FAST: Balance, Eyes, Face, Arms, Speech, Time.",
+        "dvt": "Deep Vein Thrombosis: Blood clot in a deep vein (leg). Symptoms: Swelling, pain, warmth, redness.",
+        "pe": "Pulmonary Embolism: Blockage in lung artery. Symptoms: Sudden shortness of breath, chest pain, cough.",
+        "anemia": "Lack of healthy red blood cells. Symptoms: Fatigue, weakness, pale skin, irregular heartbeats.",
+        "gout": "Form of arthritis characterized by severe pain/redness in joints (often big toe). High Uric Acid.",
+        "uti": "Urinary Tract Infection. Symptoms: Urge to urinate, burning sensation, cloudy urine.",
+        "gerd": "Gastroesophageal Reflux Disease. Stomach acid flows back into the esophagus. Symptom: Heartburn.",
+        "migraine": "Severe throbbing headache, often with nausea and sensitivity to light/sound.",
+        "osteoporosis": "Bone disease causing bones to become weak/brittle. Risk of fractures.",
+        "cirrhosis": "Late-stage scarring (fibrosis) of the liver. Causes: Hepatitis, Alcohol.",
+        "pancreatitis": "Inflammation of the pancreas. Symptoms: Upper abdominal pain, nausea, vomiting.",
+        "cellulitis": "Bacterial skin infection. Symptoms: Red, swollen, painful skin, warm to the touch.",
+        "hypothyroidism": "Underactive thyroid. Symptoms: Fatigue, weight gain, cold sensitivity.",
+        "hyperthyroidism": "Overactive thyroid. Symptoms: Weight loss, rapid heartbeat, sweating.",
+        "asthma": "Airways narrow and swell/produce extra mucus. Symptoms: Wheezing, shortness of breath."
+    }
+
+    # --- EXISTING LOOKUPS ---
     if "inr" in text: return "High INR (>3.5) indicates bleeding risk. Target is 2.0-3.0 for most indications."
     if "metformin" in text: return "Hold Metformin before contrast if eGFR < 30 (Lactic Acidosis risk)."
-    if "hypoglycemia" in text: return "Symptoms: Sweating, confusion, tachycardia. Protocol: 'Rule of 15'."
+    if "hypoglycemia" in text: return "Symptoms: Sweating, confusion, tachycardia. Protocol: 'Rule of 15' (15g carbs, wait 15 mins)."
     if "creatinine" in text: return "Serum Creatinine rise of >0.3 mg/dL within 48h indicates Acute Kidney Injury (AKI)."
-    return "I didn't recognize that term. Try asking about 'INR', 'Metformin', 'AKI', or 'Hypoglycemia'."
+    if "hyperkalemia" in text: return "High Potassium (>5.5). Risk of fatal arrhythmia. Common cause: ACEi + Spironolactone."
+    
+    # Search the new Dictionary
+    for condition, definition in conditions.items():
+        if condition in text:
+            return f"**{condition.title()}**: {definition}"
+            
+    return "I didn't recognize that term. Try asking about 'Sepsis', 'Afib', 'Hypoglycemia', or specific drugs."
 
 # ---------------------------------------------------------
 # 4. SESSION STATE
@@ -200,66 +268,84 @@ else:
             """, unsafe_allow_html=True)
 
     # --- MODULE 2: CALCULATOR ---
+# --- MODULE 2: CALCULATOR (EXPANDED) ---
     elif menu == "Risk Calculator":
         st.subheader("Acute Risk Calculator (Hybrid AI + Rules)")
-
+        
         with st.form("risk_form"):
-            # Demographics
-            st.markdown("**1. Demographics & Vitals**")
+            # 1. Demographics
+            st.markdown("#### 1. Patient Profile")
             c1, c2, c3 = st.columns(3)
             age = c1.number_input("Age", 18, 100, 65)
-            weight = c2.number_input("Weight (kg)", 40, 150, 70)
-            creat = c3.number_input("Creatinine", 0.5, 10.0, 1.0)
-
-            # Clinical Factors
-            st.markdown("**2. Clinical Factors**")
+            gender = c2.selectbox("Gender", ["Male", "Female"])
+            weight = c3.number_input("Weight (kg)", 40, 150, 70)
+            
+            # 2. Labs
+            st.markdown("#### 2. Labs & Vitals")
             c4, c5, c6 = st.columns(3)
-            inr = c4.number_input("INR", 0.0, 10.0, 2.5)
-            hba1c_high = c5.checkbox("HbA1c > 9.0%?")
-            recent_dka = c6.checkbox("Recent DKA?")
+            creat = c4.number_input("Creatinine", 0.5, 10.0, 1.0)
+            inr = c5.number_input("INR", 0.0, 10.0, 2.5)
+            hba1c_high = c6.checkbox("HbA1c > 9.0%?")
 
-            # Medications / Conditions
-            st.markdown("**3. Medications & History**")
-            c7, c8, c9 = st.columns(3)
-            anticoag = c7.checkbox("On Anticoagulant")
-            insulin = c8.checkbox("On Insulin")
-            active_chemo = c9.checkbox("Active Chemo")
+            # 3. Medications (The "Big 5")
+            st.markdown("#### 3. Medications")
+            c7, c8, c9, c10 = st.columns(4)
+            anticoag = c7.checkbox("Anticoagulant")
+            antiplatelet = c8.checkbox("Antiplatelet")
+            nsaid = c9.checkbox("NSAID Use") # Critical for Kidney Risk
+            active_chemo = c10.checkbox("Active Chemo")
+            
+            c11, c12, c13 = st.columns(3)
+            diuretic = c11.checkbox("Diuretic")
+            acei = c12.checkbox("ACEi/ARB")
+            insulin = c13.checkbox("Insulin")
 
-            c10, c11, c12 = st.columns(3)
-            diuretic = c10.checkbox("On Diuretic")
-            acei = c11.checkbox("On ACEi/ARB")
-            bp_high = c12.checkbox("Uncontrolled BP")
+            # 4. History (New Conditions)
+            st.markdown("#### 4. Medical History")
+            h1, h2, h3, h4 = st.columns(4)
+            gi_bleed = h1.checkbox("Hx GI Bleed") # Critical for Bleeding Model
+            liver_disease = h2.checkbox("Liver Disease")
+            heart_failure = h3.checkbox("Heart Failure") 
+            recent_dka = h4.checkbox("Recent DKA")
+            high_bp = st.checkbox("Uncontrolled Hypertension")
 
             submitted = st.form_submit_button("Run Analysis & Update Dashboard", type="primary")
 
             if submitted:
-                # 1. AI Prediction (Bleeding)
+                # 1. AI Prediction (Bleeding Model)
+                # We map the form inputs to the columns the AI expects
                 input_df = pd.DataFrame({
-                    'age': [age], 'inr': [inr], 'anticoagulant': [1 if anticoag else 0],
-                    'gi_bleed': [0], 'high_bp': [1 if bp_high else 0],
-                    'antiplatelet': [0], 'gender_female': [0],
-                    'weight': [weight], 'liver_disease': [0]
+                    'age': [age], 
+                    'inr': [inr], 
+                    'anticoagulant': [1 if anticoag else 0],
+                    'gi_bleed': [1 if gi_bleed else 0], 
+                    'high_bp': [1 if high_bp else 0],
+                    'antiplatelet': [1 if antiplatelet else 0], 
+                    'gender_female': [1 if gender == "Female" else 0],
+                    'weight': [weight], 
+                    'liver_disease': [1 if liver_disease else 0]
                 })
                 pred_bleeding = bleeding_model.predict(input_df)[0]
-
-                # 2. Rule Prediction (AKI)
-                pred_aki = calculate_aki_risk(age, diuretic, acei, bp_high, active_chemo, creat, False)
-
-                # 3. Rule Prediction (Hypoglycemia) - NEWLY ADDED TO CALCULATION
+                
+                # 2. Rule-Based Prediction (AKI Risk)
+                pred_aki = calculate_aki_risk(age, diuretic, acei, high_bp, active_chemo, creat, nsaid, heart_failure)
+                
+                # 3. Rule-Based Prediction (Hypoglycemia Risk)
                 is_renal_impaired = (creat > 1.3)
                 pred_hypo = calculate_hypoglycemic_risk(insulin, is_renal_impaired, hba1c_high, False, recent_dka)
 
-                # 4. Update Session State
+                # 4. Update Session State (Connects to Live Dashboard)
                 st.session_state['patient_data'] = {
-                    'id': 'Calculated Patient', 'age': age,
-                    'bleeding_risk': float(pred_bleeding),
+                    'id': 'Calculated Patient', 
+                    'age': age,
+                    'bleeding_risk': float(pred_bleeding), 
                     'aki_risk': int(pred_aki),
                     'hypo_risk': int(pred_hypo),
                     'status': 'Critical' if (pred_bleeding > 50 or pred_aki > 50) else 'Stable'
                 }
-
+                
                 st.success("Analysis Complete! Live Dashboard Updated.")
-
+                
                 # Quick Result Preview
                 r1, r2, r3 = st.columns(3)
                 r1.metric("Bleeding Risk (AI)", f"{pred_bleeding:.1f}%")
