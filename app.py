@@ -223,53 +223,75 @@ else:
             <div style="background-color:#f8d7da; color:#721c24; padding:10px; border-radius:5px;">
                 <strong>Patient C (Room 105)</strong><br>🔴 Risk: 92% (Sepsis)</div>""", unsafe_allow_html=True)
 
-    # --- MODULE 2: CALCULATOR ---
+# --- MODULE 2: CALCULATOR (EXPANDED WITH VITALS & LABS) ---
     elif menu == "Risk Calculator":
-        st.subheader("Acute Risk Calculator (Hybrid AI + Rules)")
+        st.subheader("Acute Risk Calculator (Advanced)")
         
         with st.form("risk_form"):
+            # 1. Demographics & BMI
             st.markdown("#### 1. Patient Profile")
-            c1, c2, c3 = st.columns(3)
+            c1, c2, c3, c4 = st.columns(4)
             age = c1.number_input("Age", 18, 100, 65)
             gender = c2.selectbox("Gender", ["Male", "Female"])
-            weight = c3.number_input("Weight (kg)", 40, 150, 70)
+            height = c3.number_input("Height (cm)", 100, 250, 170)
+            weight = c4.number_input("Weight (kg)", 40, 150, 70)
             
-            st.markdown("#### 2. Labs & Vitals")
-            c4, c5, c6 = st.columns(3)
-            creat = c4.number_input("Creatinine", 0.5, 10.0, 1.0)
-            inr = c5.number_input("INR", 0.0, 10.0, 2.5)
-            hba1c_high = c6.checkbox("HbA1c > 9.0%?")
+            # Live BMI Calculation
+            bmi = weight / ((height/100)**2)
+            c4.caption(f"Calculated BMI: {bmi:.1f}")
 
-            st.markdown("#### 3. Medications")
-            c7, c8, c9, c10 = st.columns(4)
-            anticoag = c7.checkbox("Anticoagulant")
-            antiplatelet = c8.checkbox("Antiplatelet")
-            nsaid = c9.checkbox("NSAID Use") 
-            active_chemo = c10.checkbox("Active Chemo")
+            # 2. Vitals (NEW SECTION)
+            st.markdown("#### 2. Vitals Signs")
+            v1, v2, v3, v4 = st.columns(4)
+            sys_bp = v1.number_input("Systolic BP", 60, 250, 120)
+            dia_bp = v2.number_input("Diastolic BP", 40, 150, 80)
+            hr = v3.number_input("Heart Rate", 40, 200, 72)
+            resp_rate = v4.number_input("Resp Rate", 8, 50, 16)
             
-            c11, c12, c13 = st.columns(3)
-            diuretic = c11.checkbox("Diuretic")
-            acei = c12.checkbox("ACEi/ARB")
-            insulin = c13.checkbox("Insulin")
+            v5, v6, v7 = st.columns(3)
+            temp = v5.number_input("Temp (°C)", 35.0, 42.0, 37.0)
+            o2_sat = v6.number_input("O2 Sat (%)", 80, 100, 98)
+            altered_mental = v7.checkbox("Altered Mental Status?")
 
-            st.markdown("#### 4. Medical History")
-            h1, h2, h3, h4 = st.columns(4)
-            gi_bleed = h1.checkbox("Hx GI Bleed") 
+            # 3. Labs (EXPANDED)
+            st.markdown("#### 3. Laboratory Values")
+            l1, l2, l3, l4 = st.columns(4)
+            creat = l1.number_input("Creatinine", 0.5, 10.0, 1.0)
+            inr = l2.number_input("INR", 0.0, 10.0, 1.0)
+            potassium = l3.number_input("Potassium (K+)", 2.0, 8.0, 4.0) # NEW
+            platelets = l4.number_input("Platelets (10^9/L)", 10, 500, 250) # NEW
+
+            # 4. Medications & History
+            st.markdown("#### 4. Meds & History")
+            m1, m2, m3, m4 = st.columns(4)
+            anticoag = m1.checkbox("Anticoagulant")
+            nsaid = m2.checkbox("NSAID Use") 
+            active_chemo = m3.checkbox("Active Chemo")
+            hba1c_high = m4.checkbox("HbA1c > 9.0%?")
+            
+            m5, m6, m7, m8 = st.columns(4)
+            diuretic = m5.checkbox("Diuretic")
+            acei = m6.checkbox("ACEi/ARB")
+            insulin = m7.checkbox("Insulin")
+            gi_bleed = m8.checkbox("Hx GI Bleed") 
+            
+            h1, h2 = st.columns(2)
+            heart_failure = h1.checkbox("Heart Failure") 
             liver_disease = h2.checkbox("Liver Disease")
-            heart_failure = h3.checkbox("Heart Failure") 
-            recent_dka = h4.checkbox("Recent DKA")
-            high_bp = st.checkbox("Uncontrolled Hypertension")
 
             submitted = st.form_submit_button("Run Analysis & Update Dashboard", type="primary")
 
             if submitted:
-                # 1. AI Prediction
+                # 1. AI Prediction (Bleeding)
+                # Map Systolic BP to binary 'high_bp' for the model input
+                is_high_bp = 1 if sys_bp > 140 else 0
+                
                 input_df = pd.DataFrame({
                     'age': [age], 'inr': [inr], 
                     'anticoagulant': [1 if anticoag else 0],
                     'gi_bleed': [1 if gi_bleed else 0], 
-                    'high_bp': [1 if high_bp else 0],
-                    'antiplatelet': [1 if antiplatelet else 0], 
+                    'high_bp': [is_high_bp],
+                    'antiplatelet': [0], 
                     'gender_female': [1 if gender == "Female" else 0],
                     'weight': [weight], 
                     'liver_disease': [1 if liver_disease else 0]
@@ -277,26 +299,36 @@ else:
                 pred_bleeding = bleeding_model.predict(input_df)[0]
                 
                 # 2. Rule Prediction (AKI)
-                pred_aki = calculate_aki_risk(age, diuretic, acei, high_bp, active_chemo, creat, nsaid, heart_failure)
+                pred_aki = calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
                 
-                # 3. Rule Prediction (Hypoglycemia)
-                is_renal_impaired = (creat > 1.3)
-                pred_hypo = calculate_hypoglycemic_risk(insulin, is_renal_impaired, hba1c_high, False, recent_dka)
+                # 3. Rule Prediction (Sepsis - qSOFA Calculation)
+                # qSOFA: SBP <= 100, RR >= 22, Altered Mental Status
+                qsofa_score = 0
+                if sys_bp <= 100: qsofa_score += 1
+                if resp_rate >= 22: qsofa_score += 1
+                if altered_mental: qsofa_score += 1
+                
+                pred_sepsis = 90 if qsofa_score >= 2 else (45 if qsofa_score == 1 else 5)
 
                 # 4. Update Session
                 st.session_state['patient_data'] = {
                     'id': 'Calculated Patient', 'age': age,
                     'bleeding_risk': float(pred_bleeding), 
                     'aki_risk': int(pred_aki),
-                    'hypo_risk': int(pred_hypo),
-                    'status': 'Critical' if (pred_bleeding > 50 or pred_aki > 50) else 'Stable'
+                    'sepsis_risk': int(pred_sepsis), # New Risk Metric
+                    'hypo_risk': 0, # Placeholder or add calculation if needed
+                    'status': 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis > 50) else 'Stable'
                 }
                 
                 st.success("Analysis Complete! Live Dashboard Updated.")
                 r1, r2, r3 = st.columns(3)
                 r1.metric("Bleeding Risk (AI)", f"{pred_bleeding:.1f}%")
                 r2.metric("AKI Risk (Rule)", f"{pred_aki}%")
-                r3.metric("Hypo Risk (Rule)", f"{pred_hypo}%")
+                r3.metric("Sepsis Risk (qSOFA)", f"{pred_sepsis}%")
+                
+                # NEW LAB ALERTS
+                if potassium > 5.5: st.error("⚠️ HYPERKALEMIA ALERT: K+ > 5.5 (Arrhythmia Risk)")
+                if platelets < 100: st.error("⚠️ THROMBOCYTOPENIA: Bleeding Risk")
 
     # --- MODULE 3: BATCH ANALYSIS (CSV) ---
     elif menu == "Batch Analysis (CSV)":
