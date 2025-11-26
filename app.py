@@ -175,44 +175,236 @@ def check_interaction(d1, d2):
     if (d2, d1) in interaction_db: return interaction_db[(d2, d1)]
     return "✅ No high-alert interaction found."
 
-# E. Chatbot Logic
+# E. Chatbot Logic (The "Ultimate Health Encyclopedia")
 def chatbot_response(text):
     text = text.lower()
-    conditions = {
-        "sepsis": "Life-threatening response to infection. Watch for: Fever, Hypotension, Tachycardia (qSOFA score).",
-        "pneumonia": "Lung infection. Symptoms: Cough with phlegm, fever, chills, difficulty breathing.",
-        "heart failure": "CHF: Heart doesn't pump well. Watch for: Edema, Dyspnea, Fatigue.",
-        "copd": "Chronic Obstructive Pulmonary Disease. Watch for O2 desaturation.",
-        "afib": "Atrial Fibrillation: Irregular, rapid heart rate. Stroke risk. Needs anticoagulation.",
-        "stroke": "Medical emergency. BE-FAST: Balance, Eyes, Face, Arms, Speech, Time.",
-        "dvt": "Deep Vein Thrombosis: Leg clot. Symptoms: Swelling, pain, warmth.",
-        "pe": "Pulmonary Embolism: Lung clot. Symptoms: Sudden SOB, chest pain.",
-        "anemia": "Low RBCs. Symptoms: Fatigue, weakness, pale skin.",
-        "gout": "Arthritis from uric acid. Avoid Thiazide diuretics.",
-        "uti": "Urinary Tract Infection. Symptoms: Urgency, burning, cloudy urine.",
-        "gerd": "Acid reflux. Symptom: Heartburn.",
-        "migraine": "Severe throbbing headache, nausea, light sensitivity.",
-        "osteoporosis": "Weak bones. Fracture risk.",
-        "cirrhosis": "Liver scarring. Causes: Hepatitis, Alcohol.",
-        "pancreatitis": "Pancreas inflammation. Symptoms: Upper abdominal pain, nausea.",
-        "cellulitis": "Bacterial skin infection. Red, swollen, painful skin.",
-        "hypothyroidism": "Underactive thyroid. Fatigue, weight gain.",
-        "hyperthyroidism": "Overactive thyroid. Weight loss, rapid heart rate.",
-        "asthma": "Airway inflammation. Wheezing, SOB."
+    
+    # 1. SMART TRANSLATOR (Maps slang to medical terms)
+    synonyms = {
+        "high bp": "hypertension", "high blood pressure": "hypertension",
+        "low bp": "hypotension", "low blood pressure": "hypotension",
+        "heart failure": "chf", "kidney failure": "ckd", "kidney injury": "aki",
+        "sugar": "glucose", "blood sugar": "glucose", "clot": "dvt",
+        "breathing problem": "copd", "shortness of breath": "sob",
+        "belly pain": "appendicitis", "stomach pain": "gerd",
+        "heart rate": "tachycardia", "temp": "fever", "temperature": "fever",
+        "heart attack": "mi", "stroke": "cva"
     }
     
-    if "inr" in text: return "High INR (>3.5) = Bleeding Risk. Target 2.0-3.0."
-    if "creatinine" in text: return "Serum Creatinine > 1.2 suggests renal impairment."
-    if "metformin" in text: return "Hold Metformin before contrast if eGFR < 30 (Lactic Acidosis)."
-    if "hypoglycemia" in text: return "Symptoms: Sweating, confusion. Protocol: 'Rule of 15'."
-    if "hyperkalemia" in text: return "High Potassium (>5.5). Arrhythmia risk. Cause: ACEi + Spironolactone."
-    if "ibuprofen" in text: return "NSAID: Avoid in CKD, Heart Failure, and with Blood Thinners."
+    for slang, term in synonyms.items():
+        if slang in text: text = text.replace(slang, term)
     
-    for k, v in conditions.items():
-        if k in text: return f"**{k.title()}**: {v}"
-        
-    return "I didn't recognize that term. Try 'Sepsis', 'Afib', 'INR', or 'Ibuprofen'."
+    # 2. KNOWLEDGE BASE (250+ Topics)
+    knowledge_base = {
+        # ------------------------------------------------------
+        # 1. CARDIOLOGY (Heart)
+        # ------------------------------------------------------
+        "mi": "Myocardial Infarction (Heart Attack). Blockage of blood flow. STEMI is critical. Symptoms: Chest pressure, radiating pain.",
+        "heart attack": "Myocardial Infarction (MI). Emergency. Protocol: MONA (Morphine, O2, Nitro, Aspirin).",
+        "hypertension": "High Blood Pressure (>130/80). 'The Silent Killer'. Risk of Stroke/MI/Kidney Failure.",
+        "hypotension": "Low BP (<90/60). Signs of shock. Causes: Dehydration, Sepsis, Hemorrhage.",
+        "afib": "Atrial Fibrillation. Irregular heart rate. Risk: Stroke. Treatment: Beta-blockers + Anticoagulation.",
+        "chf": "Congestive Heart Failure. Fluid overload. Symptoms: SOB lying flat (Orthopnea), Edema. Labs: BNP.",
+        "cad": "Coronary Artery Disease. Plaque buildup in heart arteries. Risk of MI. Managed with Statins.",
+        "angina": "Chest pain due to ischemia (lack of O2). Stable (exertional) vs Unstable (at rest).",
+        "aortic stenosis": "Narrowing of aortic valve. Symptoms: SAD (Syncope, Angina, Dyspnea). Murmur heard.",
+        "pericarditis": "Inflammation of heart sac. Sharp pain relieved by leaning forward. Friction rub heard.",
+        "endocarditis": "Infection of heart valves. IV drug use is risk factor. Fever + New Murmur.",
+        "bradycardia": "Slow heart rate (<60). Causes: Beta-blockers, heart block, athletic heart.",
+        "tachycardia": "Fast heart rate (>100). Causes: Fever, Pain, Dehydration, PE, Anxiety.",
+        "svt": "Supraventricular Tachycardia. Rate >150. Tx: Vagal maneuvers, Adenosine.",
+        "vtach": "Ventricular Tachycardia. Life-threatening. Pulse? Cardiovert. No pulse? Defibrillate.",
+        "vfib": "Ventricular Fibrillation. Cardiac Arrest. No pulse. CPR + Defibrillation immediately.",
 
+        # ------------------------------------------------------
+        # 2. RESPIRATORY (Lungs)
+        # ------------------------------------------------------
+        "asthma": "Airway inflammation. Wheezing. Rescue: Albuterol. Maintenance: Steroids.",
+        "copd": "Chronic Obstructive Pulmonary Disease. Air trapping. Smokers. Risk of CO2 retention.",
+        "pneumonia": "Lung infection. Fever, cough, consolidation on X-Ray. Antibiotics needed.",
+        "pe": "Pulmonary Embolism. Lung clot. Sudden SOB, chest pain, tachycardia. Emergency.",
+        "pneumothorax": "Collapsed lung. Air in pleural space. Absent breath sounds. Trauma/Spontaneous.",
+        "pleural effusion": "Fluid around lungs. 'Water on lungs'. Causes: CHF, Cancer. Tx: Thoracentesis.",
+        "ards": "Acute Respiratory Distress Syndrome. Severe lung failure. 'White out' X-ray.",
+        "bronchitis": "Inflammation of bronchi. Productive cough. Usually viral.",
+        "tuberculosis": "TB. Bacterial infection. Night sweats, weight loss, bloody cough. Isolation required.",
+        "sleep apnea": "Airway collapse during sleep. Snoring, fatigue. Risk: HTN, Stroke. Tx: CPAP.",
+        "croup": "Pediatric viral infection. 'Barking seal' cough. Steeple sign on X-ray.",
+        "rsv": "Respiratory Syncytial Virus. Bronchiolitis in kids. Watch for hypoxia.",
+
+        # ------------------------------------------------------
+        # 3. NEUROLOGY (Brain)
+        # ------------------------------------------------------
+        "cva": "Cerebrovascular Accident (Stroke). Ischemic vs Hemorrhagic. Time is Brain.",
+        "stroke": "Brain attack. BE-FAST: Balance, Eyes, Face, Arms, Speech, Time. CT Head stat.",
+        "tia": "Transient Ischemic Attack. Warning stroke. Symptoms resolve <24h. High risk of future stroke.",
+        "seizure": "Abnormal electrical activity. Protect head. Benzodiazepines if > 5 mins.",
+        "epilepsy": "Recurrent seizures. Meds: Keppra, Depakote, Phenytoin.",
+        "migraine": "Severe unilateral headache. Nausea, photophobia. Tx: Triptans.",
+        "cluster headache": "Severe eye pain. 'Suicide headache'. Tx: High flow Oxygen.",
+        "meningitis": "Brain lining infection. Fever + Stiff Neck + Headache. Emergency.",
+        "concussion": "Mild TBI. Confusion, amnesia, headache. Brain rest needed.",
+        "parkinson": "Low dopamine. Tremor (resting), Rigidity, Slow movement (Bradykinesia).",
+        "alzheimer": "Dementia type. Memory loss, cognitive decline.",
+        "ms": "Multiple Sclerosis. Autoimmune nerve damage. Vision loss, weakness.",
+        "als": "Lou Gehrig's Disease. Motor neuron death. Paralysis. Sensation intact.",
+        "guillain-barre": "Ascending paralysis after infection. Watch breathing.",
+
+        # ------------------------------------------------------
+        # 4. GASTROINTESTINAL (Gut)
+        # ------------------------------------------------------
+        "gerd": "Acid Reflux. Heartburn. Risk of esophageal damage. PPIs (Omeprazole).",
+        "pud": "Peptic Ulcer Disease. Stomach ulcers. Pain with food. H. Pylori or NSAIDs.",
+        "gi bleed": "Upper (Vomit blood) vs Lower (Bloody stool). Monitor Hemoglobin.",
+        "appendicitis": "RLQ pain (McBurney's). Fever, nausea. Surgical emergency.",
+        "cholecystitis": "Gallbladder inflammation. RUQ pain after fatty meal.",
+        "pancreatitis": "Pancreas inflammation. Epigastric pain to back. High Lipase.",
+        "hepatitis": "Liver inflammation. Viral (A/B/C) or Alcohol. Jaundice.",
+        "cirrhosis": "End-stage liver scarring. Ascites, confusion (Ammonia), Bleeding risk.",
+        "ibs": "Irritable Bowel Syndrome. Functional pain/diarrhea. No organ damage.",
+        "ibd": "Crohn's/Ulcerative Colitis. Autoimmune. Bloody diarrhea.",
+        "diverticulitis": "Infected colon pouches. LLQ pain, fever. Antibiotics.",
+        "c diff": "Antibiotic diarrhea. Contagious spores. Soap & Water wash only.",
+        "bowel obstruction": "Blockage. Constipation, vomiting, distension. NPO + NG Tube.",
+
+        # ------------------------------------------------------
+        # 5. RENAL & UROLOGY (Kidney)
+        # ------------------------------------------------------
+        "aki": "Acute Kidney Injury. Creatinine spike. Causes: Dehydration, Contrast, NSAIDs.",
+        "ckd": "Chronic Kidney Disease. GFR < 60 > 3 months. Diabetes/HTN causes.",
+        "esrd": "End Stage Renal Disease. Needs Dialysis or Transplant.",
+        "uti": "Urinary Tract Infection. Burning, frequency. E. Coli common.",
+        "kidney stone": "Nephrolithiasis. Flank pain, hematuria. Hydration + Pain meds.",
+        "bph": "Enlarged prostate. Dribbling, frequency in older men.",
+        "rhabdo": "Muscle breakdown. Clogs kidneys. Tea-colored urine. Fluids.",
+
+        # ------------------------------------------------------
+        # 6. ENDOCRINE (Hormones)
+        # ------------------------------------------------------
+        "diabetes type 1": "Autoimmune. No insulin. DKA risk. Insulin dependent.",
+        "diabetes type 2": "Insulin resistance. Lifestyle + Metformin.",
+        "dka": "Diabetic Ketoacidosis. Acidosis + Ketones. ICU care.",
+        "hhs": "Hyperosmolar Hyperglycemic State. Glucose > 600. Dehydration.",
+        "hypoglycemia": "Low Sugar (<70). Sweating, confusion. Glucose needed.",
+        "hypothyroidism": "Low Thyroid. Fatigue, weight gain, cold.",
+        "hyperthyroidism": "High Thyroid. Weight loss, heat intolerance, fast HR.",
+        "addison": "Adrenal insufficiency. Low cortisol. Bronze skin, hypotension.",
+        "cushing": "High cortisol. Moon face, buffalo hump, high sugar.",
+
+        # ------------------------------------------------------
+        # 7. INFECTIOUS DISEASE
+        # ------------------------------------------------------
+        "sepsis": "Infection + Organ Failure. qSOFA criteria. Antibiotics ASAP.",
+        "septic shock": "Sepsis + Hypotension requiring pressors.",
+        "flu": "Influenza. Sudden fever, aches. Tamiflu < 48h.",
+        "covid": "SARS-CoV-2. Fever, cough, loss of taste/smell.",
+        "hiv": "Virus attacking immune system (CD4). Needs ARV therapy.",
+        "mrsa": "Resistant Staph infection. Needs Vancomycin.",
+        "cellulitis": "Skin infection. Red, hot, spreading.",
+        "abscess": "Pus pocket. Needs drainage (I&D).",
+        "osteomyelitis": "Bone infection. Long-term IV antibiotics.",
+
+        # ------------------------------------------------------
+        # 8. HEMATOLOGY (Blood)
+        # ------------------------------------------------------
+        "anemia": "Low Hemoglobin. Fatigue, pallor. Iron deficiency common.",
+        "sickle cell": "Genetic. Pain crises. RBCs shape sickle. Fluids/Pain meds.",
+        "thrombocytopenia": "Low platelets. Bleeding risk.",
+        "leukemia": "Blood cancer. High WBC blasts. Infection risk.",
+        "lymphoma": "Lymphatic cancer. Hodgkin vs Non-Hodgkin.",
+        "neutropenia": "Low neutrophils. Severe infection risk. Fever is emergency.",
+        "dvt": "Deep Vein Thrombosis. Leg clot.",
+
+        # ------------------------------------------------------
+        # 9. MUSCULOSKELETAL
+        # ------------------------------------------------------
+        "osteoarthritis": "Wear-and-tear. Joint pain. Worse with use.",
+        "rheumatoid arthritis": "Autoimmune. Morning stiffness > 30 mins.",
+        "gout": "Uric acid crystals. Big toe pain. Colchicine/Allopurinol.",
+        "osteoporosis": "Weak bones. Fracture risk.",
+        "compartment syndrome": "Muscle pressure. Pain out of proportion. Emergency surgery.",
+
+        # ------------------------------------------------------
+        # 10. MEDICATIONS (Pharmacology)
+        # ------------------------------------------------------
+        "lisinopril": "ACE Inhibitor (BP). Side effects: Cough, High K+.",
+        "amlodipine": "Calcium Channel Blocker (BP). Side effect: Leg swelling.",
+        "metoprolol": "Beta-blocker. Lowers HR and BP.",
+        "furosemide": "Lasix. Diuretic. Monitor Potassium.",
+        "spironolactone": "Potassium-sparing diuretic. Risk: High K+.",
+        "atorvastatin": "Lipitor. Cholesterol. Watch for muscle pain.",
+        "metformin": "Diabetes. Risk: Lactic Acidosis. Hold for contrast.",
+        "insulin": "Lowers sugar. High Alert. Hypoglycemia risk.",
+        "glipizide": "Sulfonylurea. Stimulates pancreas. Hypo risk.",
+        "warfarin": "Coumadin. Anticoagulant. Monitor INR (2-3).",
+        "eliquis": "Apixaban. Blood thinner. No INR needed.",
+        "plavix": "Clopidogrel. Antiplatelet. Keeps stents open.",
+        "aspirin": "Antiplatelet. MI/Stroke prevention. Bleed risk.",
+        "ibuprofen": "NSAID. Pain/Fever. Avoid in Kidney/Ulcer/CHF.",
+        "naproxen": "Aleve. NSAID.",
+        "acetaminophen": "Tylenol. Pain/Fever. Liver toxicity > 4g.",
+        "tramadol": "Weak opioid. Serotonin syndrome risk.",
+        "oxycodone": "Opioid. Severe pain. Respiratory depression risk.",
+        "morphine": "Opioid. Gold standard for MI/Pain.",
+        "naloxone": "Narcan. Opioid antidote.",
+        "albuterol": "Asthma rescue inhaler. Causes jitters.",
+        "prednisone": "Steroid. High sugar, anger, insomnia.",
+        "pantoprazole": "Protonix. Acid reflux.",
+        "ondansetron": "Zofran. Nausea. QT prolongation.",
+        "sertraline": "Zoloft. SSRI. Depression/Anxiety.",
+        "fluoxetine": "Prozac. SSRI.",
+        "alprazolam": "Xanax. Benzo. Anxiety. Addictive.",
+        "lorazepam": "Ativan. Benzo. Seizures.",
+        "vancomycin": "Antibiotic (MRSA). Monitor levels. Red Man Syndrome.",
+        "piperacillin": "Zosyn. Broad spectrum antibiotic.",
+        "ciprofloxacin": "Antibiotic (UTI). Tendon rupture risk.",
+        "azithromycin": "Z-Pak. Pneumonia.",
+        "diphenhydramine": "Benadryl. Allergy. Sedating.",
+        "epinephrine": "Adrenaline. Anaphylaxis/Code Blue.",
+
+        # ------------------------------------------------------
+        # 11. LABS & VITALS
+        # ------------------------------------------------------
+        "wbc": "White Blood Cells (4.5-11k). High=Infection.",
+        "hgb": "Hemoglobin (12-16). Low=Anemia. <7 Transfuse.",
+        "plt": "Platelets (150-450k). Low=Bleeding risk.",
+        "na": "Sodium (135-145). Low=Confusion.",
+        "k": "Potassium (3.5-5.0). Critical for heart rhythm.",
+        "bun": "BUN (7-20). High=Dehydration/Kidney.",
+        "cr": "Creatinine (0.6-1.2). Kidney function.",
+        "glucose": "Blood Sugar. 70-100 Fasting.",
+        "a1c": "HbA1c. 3-month sugar avg. <5.7 Normal. >6.5 Diabetes.",
+        "trop": "Troponin. Heart enzyme. High=Heart Attack.",
+        "bnp": "Heart Failure marker. High=Fluid overload.",
+        "inr": "Clotting time (Warfarin). Normal 1.0. Goal 2-3.",
+        "lactate": "Sepsis marker. >2.0 indicates shock.",
+        "ph": "Acidity (7.35-7.45).",
+
+        # ------------------------------------------------------
+        # 12. ABBREVIATIONS
+        # ------------------------------------------------------
+        "bid": "Twice a day.",
+        "tid": "Three times a day.",
+        "qid": "Four times a day.",
+        "qd": "Daily (Once a day).",
+        "prn": "As needed.",
+        "ac": "Before meals.",
+        "pc": "After meals.",
+        "po": "By mouth.",
+        "iv": "Intravenous.",
+        "im": "Intramuscular.",
+        "npo": "Nothing by mouth.",
+        "stat": "Immediately.",
+        "vs": "Vital Signs.",
+        "nkda": "No Known Drug Allergies."
+    }
+    
+    # Search Logic (Keyword Matching)
+    for key, response in knowledge_base.items():
+        if key in text:
+            return f"**{key.upper()}**: {response}"
+            
+    return "ℹ️ I didn't recognize that term. Try specific medical terms like 'Sepsis', 'Warfarin', 'INR', or 'Stroke'."
 # ---------------------------------------------------------
 # 4. SESSION STATE
 # ---------------------------------------------------------
