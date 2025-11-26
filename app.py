@@ -223,7 +223,7 @@ else:
             <div style="background-color:#f8d7da; color:#721c24; padding:10px; border-radius:5px;">
                 <strong>Patient C (Room 105)</strong><br>🔴 Risk: 92% (Sepsis)</div>""", unsafe_allow_html=True)
 
-# --- MODULE 2: CALCULATOR (EXPANDED WITH VITALS & LABS) ---
+# --- MODULE 2: CALCULATOR (UPDATED: TEMP & WEIGHT SELECTORS) ---
     elif menu == "Risk Calculator":
         st.subheader("Acute Risk Calculator (Advanced)")
         
@@ -234,13 +234,24 @@ else:
             age = c1.number_input("Age", 18, 100, 65)
             gender = c2.selectbox("Gender", ["Male", "Female"])
             height = c3.number_input("Height (cm)", 100, 250, 170)
-            weight = c4.number_input("Weight (kg)", 40, 150, 70)
             
+            # UPDATED WEIGHT SECTION (kg/lbs)
+            with c4:
+                w_val, w_unit = st.columns([2, 1]) 
+                weight_input = w_val.number_input("Weight", 40.0, 400.0, 70.0)
+                weight_scale = w_unit.selectbox("Unit", ["kg", "lbs"], key="w_unit")
+
+            # Live Logic: Convert Weight for BMI Display
+            if weight_scale == "lbs":
+                weight_kg = weight_input * 0.453592
+            else:
+                weight_kg = weight_input
+
             # Live BMI Calculation
-            bmi = weight / ((height/100)**2)
+            bmi = weight_kg / ((height/100)**2)
             c4.caption(f"Calculated BMI: {bmi:.1f}")
 
-            # 2. Vitals (NEW SECTION)
+            # 2. Vitals
             st.markdown("#### 2. Vitals Signs")
             v1, v2, v3, v4 = st.columns(4)
             sys_bp = v1.number_input("Systolic BP", 60, 250, 120)
@@ -248,18 +259,23 @@ else:
             hr = v3.number_input("Heart Rate", 40, 200, 72)
             resp_rate = v4.number_input("Resp Rate", 8, 50, 16)
             
+            # UPDATED TEMPERATURE SECTION (C/F)
             v5, v6, v7 = st.columns(3)
-            temp = v5.number_input("Temp (°C)", 35.0, 42.0, 37.0)
+            with v5:
+                t_val, t_unit = st.columns([2, 1]) 
+                temp_input = t_val.number_input("Temperature", 30.0, 110.0, 37.0, step=0.1)
+                temp_scale = t_unit.selectbox("Unit", ["°C", "°F"], key="t_unit")
+            
             o2_sat = v6.number_input("O2 Sat (%)", 80, 100, 98)
             altered_mental = v7.checkbox("Altered Mental Status?")
 
-            # 3. Labs (EXPANDED)
+            # 3. Labs
             st.markdown("#### 3. Laboratory Values")
             l1, l2, l3, l4 = st.columns(4)
             creat = l1.number_input("Creatinine", 0.5, 10.0, 1.0)
             inr = l2.number_input("INR", 0.0, 10.0, 1.0)
-            potassium = l3.number_input("Potassium (K+)", 2.0, 8.0, 4.0) # NEW
-            platelets = l4.number_input("Platelets (10^9/L)", 10, 500, 250) # NEW
+            potassium = l3.number_input("Potassium (K+)", 2.0, 8.0, 4.0) 
+            platelets = l4.number_input("Platelets (10^9/L)", 10, 500, 250)
 
             # 4. Medications & History
             st.markdown("#### 4. Meds & History")
@@ -282,8 +298,13 @@ else:
             submitted = st.form_submit_button("Run Analysis & Update Dashboard", type="primary")
 
             if submitted:
+                # Logic: Convert Temp to Celsius
+                if temp_scale == "°F":
+                    final_temp_c = (temp_input - 32) * 5/9
+                else:
+                    final_temp_c = temp_input
+
                 # 1. AI Prediction (Bleeding)
-                # Map Systolic BP to binary 'high_bp' for the model input
                 is_high_bp = 1 if sys_bp > 140 else 0
                 
                 input_df = pd.DataFrame({
@@ -293,7 +314,7 @@ else:
                     'high_bp': [is_high_bp],
                     'antiplatelet': [0], 
                     'gender_female': [1 if gender == "Female" else 0],
-                    'weight': [weight], 
+                    'weight': [weight_kg], # Uses the converted KG value
                     'liver_disease': [1 if liver_disease else 0]
                 })
                 pred_bleeding = bleeding_model.predict(input_df)[0]
@@ -301,22 +322,25 @@ else:
                 # 2. Rule Prediction (AKI)
                 pred_aki = calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
                 
-                # 3. Rule Prediction (Sepsis - qSOFA Calculation)
-                # qSOFA: SBP <= 100, RR >= 22, Altered Mental Status
+                # 3. Rule Prediction (Sepsis - qSOFA + Fever Check)
                 qsofa_score = 0
                 if sys_bp <= 100: qsofa_score += 1
                 if resp_rate >= 22: qsofa_score += 1
                 if altered_mental: qsofa_score += 1
                 
-                pred_sepsis = 90 if qsofa_score >= 2 else (45 if qsofa_score == 1 else 5)
+                # Fever Check
+                if final_temp_c > 38.0 or final_temp_c < 36.0: 
+                    qsofa_score += 0.5 
+
+                pred_sepsis = 90 if qsofa_score >= 2 else (45 if qsofa_score >= 1 else 5)
 
                 # 4. Update Session
                 st.session_state['patient_data'] = {
                     'id': 'Calculated Patient', 'age': age,
                     'bleeding_risk': float(pred_bleeding), 
                     'aki_risk': int(pred_aki),
-                    'sepsis_risk': int(pred_sepsis), # New Risk Metric
-                    'hypo_risk': 0, # Placeholder or add calculation if needed
+                    'sepsis_risk': int(pred_sepsis),
+                    'hypo_risk': 0, 
                     'status': 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis > 50) else 'Stable'
                 }
                 
@@ -326,10 +350,9 @@ else:
                 r2.metric("AKI Risk (Rule)", f"{pred_aki}%")
                 r3.metric("Sepsis Risk (qSOFA)", f"{pred_sepsis}%")
                 
-                # NEW LAB ALERTS
+                # Lab Alerts
                 if potassium > 5.5: st.error("⚠️ HYPERKALEMIA ALERT: K+ > 5.5 (Arrhythmia Risk)")
                 if platelets < 100: st.error("⚠️ THROMBOCYTOPENIA: Bleeding Risk")
-
     # --- MODULE 3: BATCH ANALYSIS (CSV) ---
     elif menu == "Batch Analysis (CSV)":
         st.subheader("Bulk Patient Processing")
