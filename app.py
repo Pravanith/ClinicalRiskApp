@@ -410,34 +410,63 @@ else:
                 # "THE CAUSE" SECTION
                 st.info(f"🤖 **Clinical Impression (Possible Cause):** {final_diagnosis}")
 
-                # --- F. DETAILED ALERTS (ALL OPTIONS) ---
+               # --- F. DETAILED ALERTS (SENSITIVE MODE) ---
                 with st.expander("⚠️ Detailed Clinical Alerts (Expand for details)", expanded=True):
-                    # Vitals
-                    if map_val < 65: st.error(f"🔴 HYPOTENSION: MAP is {int(map_val)} mmHg. Organs are not perfusing.")
-                    if sys_bp > 180: st.error(f"🔴 HYPERTENSIVE CRISIS: SBP {sys_bp} mmHg.")
-                    if hr > 100: st.warning(f"🟠 TACHYCARDIA: Heart Rate {hr} bpm.")
-                    if hr < 50: st.warning(f"🟠 BRADYCARDIA: Heart Rate {hr} bpm.")
-                    if o2_sat < 92: st.error(f"🔴 HYPOXIA: O2 Sat {o2_sat}%. Needs Oxygen.")
-                    if final_temp_c > 38.3: st.warning(f"🟠 FEVER: Temp {final_temp_c:.1f}°C.")
                     
-                    # Labs
-                    if glucose < 70: st.error(f"🔴 HYPOGLYCEMIA: Blood Sugar {glucose} mg/dL. Give D50/Glucagon.")
-                    if glucose > 250: st.warning(f"🟠 HYPERGLYCEMIA: Blood Sugar {glucose} mg/dL.")
-                    if lactate > 2.0: st.error(f"🔴 SEPSIS WARNING: Lactate {lactate} mmol/L indicates tissue stress.")
-                    if wbc > 12.0: st.warning(f"🟠 LEUKOCYTOSIS: WBC {wbc} (Infection risk).")
-                    if wbc < 4.0: st.warning(f"🟠 LEUKOPENIA: WBC {wbc} (Immune compromise).")
-                    if hgb < 8.0: st.error(f"🔴 SEVERE ANEMIA: Hgb {hgb} g/dL. Consider Transfusion.")
-                    if platelets < 50: st.error(f"🔴 CRITICAL THROMBOCYTOPENIA: Plt {platelets}. Bleeding risk.")
-                    if potassium > 5.5: st.error(f"🔴 HYPERKALEMIA: K+ {potassium}. Cardiac Arrest Risk.")
-                    if potassium < 3.5: st.warning(f"🟠 HYPOKALEMIA: K+ {potassium}.")
-                    if creat > 1.5: st.warning(f"🟠 RENAL IMPAIRMENT: Creatinine {creat} mg/dL.")
+                    # --- 1. VITALS ALERTS ---
+                    # Blood Pressure & MAP
+                    if map_val < 65: st.error(f"🔴 CRITICAL HYPOTENSION: MAP {int(map_val)} mmHg. Shock risk.")
+                    elif map_val < 70: st.warning(f"🟠 LOW PERFUSION: MAP {int(map_val)} mmHg.")
                     
-                    # Meds
-                    if nsaid and anticoag: st.error("❌ DRUG INTERACTION: NSAID + Anticoagulant significantly increases bleed risk.")
-                    if acei and potassium > 5.0: st.warning("⚠️ DRUG ALERT: ACEi may worsen Hyperkalemia.")
+                    if sys_bp > 180 or dia_bp > 120: st.error(f"🔴 HYPERTENSIVE CRISIS: {sys_bp}/{dia_bp} mmHg.")
+                    elif sys_bp > 140 or dia_bp > 90: st.warning(f"🟠 HYPERTENSION: {sys_bp}/{dia_bp} mmHg.")
+
+                    # Heart Rate
+                    if hr > 120: st.error(f"🔴 SEVERE TACHYCARDIA: HR {hr} bpm.")
+                    elif hr > 100: st.warning(f"🟠 TACHYCARDIA: HR {hr} bpm.")
+                    elif hr < 50: st.warning(f"🟠 BRADYCARDIA: HR {hr} bpm.")
+
+                    # Oxygen & Temp
+                    if o2_sat < 90: st.error(f"🔴 CRITICAL HYPOXIA: SpO2 {o2_sat}%. Intubate/NRB.")
+                    elif o2_sat < 94: st.warning(f"🟠 HYPOXIA: SpO2 {o2_sat}%. Needs O2.")
                     
+                    if final_temp_c > 38.0: st.warning(f"🟠 FEVER: {final_temp_c:.1f}°C.")
+                    elif final_temp_c < 36.0: st.warning(f"🟠 HYPOTHERMIA: {final_temp_c:.1f}°C.")
+
+                    # --- 2. LAB ALERTS ---
+                    # Glucose
+                    if glucose < 50: st.error(f"🔴 CRITICAL HYPOGLYCEMIA: {glucose} mg/dL. Coma risk.")
+                    elif glucose < 70: st.warning(f"🟠 HYPOGLYCEMIA: {glucose} mg/dL.")
+                    elif glucose > 250: st.warning(f"🟠 HYPERGLYCEMIA: {glucose} mg/dL.")
+
+                    # CBC (WBC, Hgb, Plt)
+                    if wbc > 12.0: st.warning(f"🟠 LEUKOCYTOSIS (Infection?): WBC {wbc}.")
+                    elif wbc < 4.0: st.warning(f"🟠 LEUKOPENIA (Immune Risk): WBC {wbc}.")
+                    
+                    if hgb < 7.0: st.error(f"🔴 CRITICAL ANEMIA: Hgb {hgb}. Transfuse.")
+                    elif hgb < 12.0: st.warning(f"🟠 ANEMIA: Hgb {hgb}.")
+                    
+                    if platelets < 50: st.error(f"🔴 CRITICAL THROMBOCYTOPENIA: Plt {platelets}. Bleed risk.")
+                    elif platelets < 150: st.warning(f"🟠 THROMBOCYTOPENIA: Plt {platelets}.")
+
+                    # Metabolic (Lactate, K+, Renal)
+                    if lactate > 4.0: st.error(f"🔴 SEPTIC SHOCK / ISCHEMIA: Lactate {lactate} mmol/L.")
+                    elif lactate > 2.0: st.warning(f"🟠 ELEVATED LACTATE: {lactate} mmol/L.")
+                    
+                    if potassium > 6.0: st.error(f"🔴 CRITICAL HYPERKALEMIA: K+ {potassium}.")
+                    elif potassium > 5.0: st.warning(f"🟠 HYPERKALEMIA: K+ {potassium}.")
+                    elif potassium < 3.5: st.warning(f"🟠 HYPOKALEMIA: K+ {potassium}.")
+                    
+                    if creat > 1.2 or bun > 20: st.warning(f"🟠 RENAL INSUFFICIENCY: Cr {creat} / BUN {bun}.")
+
+                    # --- 3. MEDICATION ALERTS ---
+                    if nsaid and anticoag: st.error("❌ CONTRAINDICATION: NSAID + Blood Thinner = High Bleed Risk.")
+                    if nsaid and creat > 1.5: st.error("❌ CONTRAINDICATION: NSAIDs are nephrotoxic in Kidney Failure.")
+                    if acei and potassium > 5.0: st.warning("⚠️ MED WARNING: ACEi may worsen Hyperkalemia.")
+                    if active_chemo and wbc < 4.0: st.error("🔴 NEUTROPENIC FEVER RISK: Chemo + Low WBC.")
+
                 st.toast("✅ Patient Analysis Complete", icon="🩺")
-    # --- MODULE SQL HISTORY ---
+                # --- MODULE SQL HISTORY ---
     elif menu == "Patient History (SQL)":
         st.subheader("🗄️ Patient History Database")
         
