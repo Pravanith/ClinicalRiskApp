@@ -179,52 +179,15 @@ else:
     with st.sidebar:
         st.title("Navigation")
         menu = st.radio("Select Module", [
-            "Live Dashboard", 
             "Risk Calculator", 
+            "Live Dashboard", 
             "Batch Analysis (CSV)", 
             "Medication Checker", 
             "Clinical Chatbot"
         ])
         st.info("v2.3 - Final Production Build")
-
-    # --- MODULE 1: LIVE DASHBOARD ---
-    if menu == "Live Dashboard":
-        data = st.session_state['patient_data']
-        st.subheader(f"🏥 Patient Monitor: {data['id']}")
-        
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Patient Age", f"{data['age']} yrs")
-        c2.metric("Bleeding Risk", f"{data['bleeding_risk']:.1f}%", "High" if data['bleeding_risk']>50 else "Normal")
-        c3.metric("AKI Risk", f"{data['aki_risk']}%", "Critical" if data['aki_risk']>70 else "Normal")
-        c4.metric("Hypo Risk", f"{data['hypo_risk']}%", "High" if data['hypo_risk']>50 else "Low")
-        
-        st.divider()
-        col_main, col_queue = st.columns([2, 1])
-        
-        with col_main:
-            st.markdown("#### 📈 Real-Time Vitals")
-            chart_data = pd.DataFrame({
-                'Hour': [1,2,3,4,5],
-                'Risk Score': [data['bleeding_risk']*0.8, data['bleeding_risk']*0.9, data['bleeding_risk'], data['bleeding_risk']*1.1, data['bleeding_risk']]
-            })
-            st.line_chart(chart_data.set_index('Hour'))
-            
-            if data['bleeding_risk'] > 50: st.error("HIGH BLEED RISK: Review Anticoagulants.")
-            elif data['aki_risk'] > 50: st.warning("RENAL ALERT: Monitor Urine Output.")
-            elif data['hypo_risk'] > 50: st.warning("METABOLIC ALERT: Hypoglycemia Risk.")
-            else: st.success("No Critical Alerts Active.")
-
-        with col_queue:
-            st.markdown("#### 📋 Patient Queue")
-            st.markdown(f"""<div style="background-color:#d4edda; color:#155724; padding:10px; border-radius:5px; margin-bottom:10px;">
-                <strong>{data['id']} (Current)</strong><br>Status: {data['status']}</div>""", unsafe_allow_html=True)
-            st.markdown("""<div style="background-color:#fff3cd; color:#856404; padding:10px; border-radius:5px; margin-bottom:10px;">
-                <strong>Patient B (Room 410)</strong><br>🟠 Risk: 80% (AKI Focus)</div>
-            <div style="background-color:#f8d7da; color:#721c24; padding:10px; border-radius:5px;">
-                <strong>Patient C (Room 105)</strong><br>🔴 Risk: 92% (Sepsis)</div>""", unsafe_allow_html=True)
-
-# --- MODULE 2: CALCULATOR (UPDATED: TEMP & WEIGHT SELECTORS) ---
-    elif menu == "Risk Calculator":
+# --- MODULE 1: CALCULATOR (UPDATED: TEMP & WEIGHT SELECTORS) ---
+    if menu == "Risk Calculator":
         st.subheader("Acute Risk Calculator (Advanced)")
         
         with st.form("risk_form"):
@@ -353,6 +316,43 @@ else:
                 # Lab Alerts
                 if potassium > 5.5: st.error("⚠️ HYPERKALEMIA ALERT: K+ > 5.5 (Arrhythmia Risk)")
                 if platelets < 100: st.error("⚠️ THROMBOCYTOPENIA: Bleeding Risk")
+
+    # --- MODULE 2: LIVE DASHBOARD ---
+    elif menu == "Live Dashboard":
+        data = st.session_state['patient_data']
+        st.subheader(f"🏥 Patient Monitor: {data['id']}")
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Patient Age", f"{data['age']} yrs")
+        c2.metric("Bleeding Risk", f"{data['bleeding_risk']:.1f}%", "High" if data['bleeding_risk']>50 else "Normal")
+        c3.metric("AKI Risk", f"{data['aki_risk']}%", "Critical" if data['aki_risk']>70 else "Normal")
+        c4.metric("Hypo Risk", f"{data['hypo_risk']}%", "High" if data['hypo_risk']>50 else "Low")
+        
+        st.divider()
+        col_main, col_queue = st.columns([2, 1])
+        
+        with col_main:
+            st.markdown("#### 📈 Real-Time Vitals")
+            chart_data = pd.DataFrame({
+                'Hour': [1,2,3,4,5],
+                'Risk Score': [data['bleeding_risk']*0.8, data['bleeding_risk']*0.9, data['bleeding_risk'], data['bleeding_risk']*1.1, data['bleeding_risk']]
+            })
+            st.line_chart(chart_data.set_index('Hour'))
+            
+            if data['bleeding_risk'] > 50: st.error("HIGH BLEED RISK: Review Anticoagulants.")
+            elif data['aki_risk'] > 50: st.warning("RENAL ALERT: Monitor Urine Output.")
+            elif data['hypo_risk'] > 50: st.warning("METABOLIC ALERT: Hypoglycemia Risk.")
+            else: st.success("No Critical Alerts Active.")
+
+        with col_queue:
+            st.markdown("#### 📋 Patient Queue")
+            st.markdown(f"""<div style="background-color:#d4edda; color:#155724; padding:10px; border-radius:5px; margin-bottom:10px;">
+                <strong>{data['id']} (Current)</strong><br>Status: {data['status']}</div>""", unsafe_allow_html=True)
+            st.markdown("""<div style="background-color:#fff3cd; color:#856404; padding:10px; border-radius:5px; margin-bottom:10px;">
+                <strong>Patient B (Room 410)</strong><br>🟠 Risk: 80% (AKI Focus)</div>
+            <div style="background-color:#f8d7da; color:#721c24; padding:10px; border-radius:5px;">
+                <strong>Patient C (Room 105)</strong><br>🔴 Risk: 92% (Sepsis)</div>""", unsafe_allow_html=True)
+
     # --- MODULE 3: BATCH ANALYSIS (CSV) ---
     elif menu == "Batch Analysis (CSV)":
         st.subheader("Bulk Patient Processing")
