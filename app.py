@@ -292,21 +292,20 @@ else:
             pain = v8.slider("Pain Score (VAS)", 0, 10, 0)
 
             # ---------------------------------------------------------
-            # 3. EXPANDED LAB VALUES
+            # 3. EXPANDED LAB VALUES (FIXED)
             # ---------------------------------------------------------
             st.markdown("#### 3. Laboratory Values")
             l1, l2, l3, l4 = st.columns(4)
             creat = l1.number_input("Creatinine (mg/dL)", 0.5, 10.0, 1.0)
-            bun = l2.number_input("BUN (mg/dL)", 5, 100, 15)
-            egfr = l3.number_input("eGFR (mL/min)", 10, 140, 90)
-            inr = l4.number_input("INR", 0.0, 10.0, 1.0)
+            potassium = l2.number_input("Potassium (K+)", 2.0, 9.0, 4.0) # 👈 FIXED: Added this back
+            inr = l3.number_input("INR", 0.0, 10.0, 1.0)
+            bun = l4.number_input("BUN (mg/dL)", 5, 100, 15)
             
             l5, l6, l7, l8 = st.columns(4)
             wbc = l5.number_input("WBC (10^9/L)", 1.0, 50.0, 6.5)
             hgb = l6.number_input("Hemoglobin (g/dL)", 5.0, 20.0, 14.0)
             platelets = l7.number_input("Platelets (10^9/L)", 10, 500, 250)
             lactate = l8.number_input("Lactate (mmol/L)", 0.0, 15.0, 1.0)
-
             # ---------------------------------------------------------
             # 4. RENAMED: COMORBIDITIES & MEDICATIONS
             # ---------------------------------------------------------
