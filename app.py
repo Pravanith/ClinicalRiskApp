@@ -55,8 +55,22 @@ def calculate_aki_risk(age, diuretic, acei, high_bp, chemo, creat, nsaid, heart_
     if creat > 1.5: score += 30
     elif creat > 1.2: score += 15
     return min(score, 100)
-
-# B. Hypoglycemic Risk (Blood Sugar)
+# B. Sepsis Screen (qSOFA) - PASTE THIS SECTION
+def calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, temp_c):
+    qsofa = 0
+    # qSOFA Criteria
+    if sys_bp > 0 and sys_bp <= 100: qsofa += 1
+    if resp_rate >= 22: qsofa += 1
+    if altered_mental: qsofa += 1
+    
+    # Fever check (SIRS criteria)
+    if temp_c > 0 and (temp_c > 38.0 or temp_c < 36.0):
+        qsofa += 0.5
+    
+    if qsofa >= 2: return 90  # High Risk
+    if qsofa >= 1: return 45  # Moderate Risk
+    return 5                  # Low Risk
+# C. Hypoglycemic Risk (Blood Sugar)
 def calculate_hypoglycemic_risk(insulin, renal, hba1c_high, neuropathy, recent_dka):
     score = 0
     score += 30 if insulin else 0
