@@ -366,20 +366,40 @@ else:
             uploaded_image = st.file_uploader("Upload Wound/X-Ray (JPG)", type=["jpg"])
             if uploaded_image: st.image(uploaded_image, width=300)
 
-    # --- MODULE 4: MEDICATION CHECKER ---
+   # --- MODULE 4: MEDICATION CHECKER (UPDATED WITH CATEGORIES) ---
     elif menu == "Medication Checker":
         st.subheader("Drug-Drug Interaction Checker")
-        st.caption("Search for interactions (e.g., 'Sildenafil' + 'Nitroglycerin')")
+        
+        # 1. Add a Guide so users know what to test
+        with st.expander("ℹ️  Supported Drug Categories (Demo Database)"):
+            st.markdown("""
+            This demo checks for **High-Alert** interactions in these specific categories:
+            * **🫀 Cardiac:** Warfarin, Amiodarone, Digoxin, Sildenafil, Nitroglycerin, Spironolactone, Lisinopril.
+            * **💊 Pain/NSAIDs:** Ibuprofen, Tramadol, Fentanyl, Methotrexate, Oxycodone.
+            * **🧠 Psych/Neuro:** Sertraline, Fluoxetine, Linezolid, Lithium, Citalopram.
+            * **🦠 Antibiotics:** Ciprofloxacin, Erythromycin, Trimethoprim (Bactrim), Claritromycin.
+            """)
+        
+        st.caption("Type two drugs below to check for CRITICAL or MAJOR interactions.")
+
+        # 2. Input Fields
         col_d1, col_d2 = st.columns(2)
-        d1 = col_d1.text_input("Drug A")
-        d2 = col_d2.text_input("Drug B")
+        d1 = col_d1.text_input("Drug A", placeholder="e.g., Warfarin")
+        d2 = col_d2.text_input("Drug B", placeholder="e.g., Ibuprofen")
+
+        # 3. Logic
         if d1 and d2:
             res = check_interaction(d1, d2)
-            if "CRITICAL" in res: st.error(res)
-            elif "MAJOR" in res: st.warning(res)
-            elif "MODERATE" in res: st.info(res)
-            else: st.success(res)
-
+            
+            # Dynamic Styling based on Severity
+            if "CRITICAL" in res: 
+                st.error(f"❌ {res}")
+            elif "MAJOR" in res: 
+                st.warning(f"⚠️ {res}")
+            elif "MODERATE" in res: 
+                st.info(f"ℹ️ {res}")
+            else: 
+                st.success(res)
     # --- MODULE 5: CHATBOT ---
     elif menu == "Clinical Chatbot":
         st.subheader("AI Clinical Assistant")
