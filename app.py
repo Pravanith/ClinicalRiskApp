@@ -395,7 +395,7 @@ else:
                     float(pred_bleeding), 
                     'Critical' if (pred_bleeding > 50 or pred_aki > 50) else 'Stable'
                 )
-                st.toast("✅ Patient Data Saved to Database!", icon="💾")3
+                st.toast("✅ Patient Data Saved to Database!", icon="💾")
     # --- MODULE SQL HISTORY ---
     elif menu == "Patient History (SQL)":
         st.subheader("🗄️ Patient History Database")
