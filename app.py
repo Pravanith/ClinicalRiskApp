@@ -419,7 +419,38 @@ else:
                     if platelets > 0 and platelets < 100: st.error(f"⚠️ THROMBOCYTOPENIA: Plt {platelets}")
                     if glucose < 70 and glucose > 0: st.warning(f"⚠️ HYPOGLYCEMIA: Glucose {glucose}")
                     if lactate > 2.0: st.warning(f"⚠️ LACTATE ELEVATED: {lactate} mmol/L")
-   # --- MODULE 2: LIVE DASHBOARD (VISUAL OVERHAUL) ---
+     # --- MODULE 2: PATIENT HISTORY (SQL) ---
+    elif menu == "Patient History (SQL)":
+        st.subheader("🗄️ Patient History Database")
+        
+        # Check if database exists
+        if not os.path.exists('clinical_data.db'):
+            st.info("📭 Database is empty. Run a Risk Analysis in the Calculator to create a record.")
+        else:
+            try:
+                conn = sqlite3.connect('clinical_data.db')
+                history_df = pd.read_sql("SELECT * FROM patient_history ORDER BY timestamp DESC", conn)
+                conn.close()
+                
+                if not history_df.empty:
+                    st.dataframe(history_df, use_container_width=True)
+                    
+                    st.markdown("### 📊 Cohort Analytics")
+                    c1, c2 = st.columns(2)
+                    c1.bar_chart(history_df['aki_risk_score'])
+                    c2.scatter_chart(history_df, x='age', y='sbp')
+                    
+                    if st.button("🗑️ Clear Database"):
+                        conn = sqlite3.connect('clinical_data.db')
+                        conn.execute("DELETE FROM patient_history")
+                        conn.commit()
+                        conn.close()
+                        st.rerun()
+                else:
+                    st.info("No records found yet.")
+            except Exception as e:
+                st.error(f"Database Error: {e}")
+   # --- MODULE 3: LIVE DASHBOARD (VISUAL OVERHAUL) ---
     elif menu == "Live Dashboard":
         import altair as alt # Import Altair for better charts
 
@@ -508,7 +539,7 @@ else:
             
             st.info("ℹ️ Note: Queue is empty. Waiting for new admissions.")
     
-    # --- MODULE 3: BATCH ANALYSIS (CSV) ---
+    # --- MODULE 4: BATCH ANALYSIS (CSV) ---
     elif menu == "Batch Analysis (CSV)":
         st.subheader("Bulk Patient Processing")
         
@@ -602,7 +633,7 @@ else:
             uploaded_image = st.file_uploader("Upload Wound/X-Ray (JPG)", type=["jpg"])
             if uploaded_image: st.image(uploaded_image, width=300)
                 
-    # --- MODULE 4: MEDICATION CHECKER ---
+    # --- MODULE 5: MEDICATION CHECKER ---
     elif menu == "Medication Checker":
         st.subheader("Drug-Drug Interaction Checker")
         
@@ -637,7 +668,7 @@ else:
             else: 
                 st.success(res)
 
-    # --- MODULE 5: CHATBOT ---
+    # --- MODULE 6: CHATBOT ---
     elif menu == "Clinical Chatbot":
         st.subheader("AI Clinical Assistant")
         q = st.text_input("Ask a clinical question (e.g. 'Sepsis', 'AFib', 'Metformin'):")
