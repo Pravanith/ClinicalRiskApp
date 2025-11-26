@@ -106,29 +106,30 @@ def calculate_aki_risk(age, diuretic, acei, sys_bp, chemo, creat, nsaid, heart_f
         
     return min(score, 100)
 
-# B. Sepsis Screen (qSOFA)
+# B. Sepsis Screen (qSOFA) - UPDATED (Zero-Safe)
 def calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, temp_c):
     qsofa = 0
     
-    # FIX: Only score hypotension if BP is actually entered (>0)
+    # 1. Hypotension (BP < 100)
+    # FIX: We check if sys_bp > 0 so "0" isn't counted as shock
     if sys_bp > 0 and sys_bp <= 100: 
         qsofa += 1
         
-    # FIX: Only score tachypnea if RR is actually entered (>0)
+    # 2. Tachypnea (High Resp Rate)
+    # FIX: We check if resp_rate > 0
     if resp_rate > 0 and resp_rate >= 22: 
         qsofa += 1
         
+    # 3. Altered Mental Status
     if altered_mental: 
-        qsofa += 1
-    
-    # Fever check (SIRS criteria) - Only if temp entered
+        qsofa += 1 
+    # 4. Fever Check (SIRS Criteria)
     if temp_c > 0 and (temp_c > 38.0 or temp_c < 36.0):
         qsofa += 0.5
-    
-    # Return Probability % (Not raw score)
-    if qsofa >= 2: return 90   # High Probability
-    if qsofa >= 1: return 45   # Moderate Probability
-    return 0                   # Normal (0% Probability)
+    # SCORING
+    if qsofa >= 2: return 90   # High Risk
+    if qsofa >= 1: return 45   # Moderate Risk
+    return 0                   # Normal (0% Risk)
 
 # C. Hypoglycemic Risk
 def calculate_hypoglycemic_risk(insulin, renal, hba1c_high, recent_dka):
@@ -603,31 +604,18 @@ else:
                 st.success("✅ **STABLE:** Vitals are trending within normal limits.")
 
         with col_queue:
-            st.markdown("### 🏥 Unit Status")
-            
-            # Improved Card Styling with new colors
-            # Status Color: Green (Safe) vs Red (Critical)
-            status_color = "#FF5252" if is_critical else "#69F0AE"
-            bg_color = "rgba(255, 82, 82, 0.1)" if is_critical else "rgba(105, 240, 174, 0.1)"
-            
+            st.markdown("#### 📋 Patient Status")
+            # Only show the current patient (You)
             st.markdown(f"""
-            <div style="
-                background-color: {bg_color}; 
-                border: 2px solid {status_color}; 
-                border-radius: 10px; 
-                padding: 15px; 
-                margin-bottom: 20px;">
-                <h3 style="color: {status_color}; margin:0;">{data['id']}</h3>
-                <p style="margin: 5px 0 0 0; font-size: 1.1em; color: white;">
-                    Status: <strong>{data['status'].upper()}</strong>
-                </p>
+            <div style="background-color:#d4edda; color:#155724; padding:10px; border-radius:5px; margin-bottom:10px;">
+                <strong>{data['id']} (Current)</strong><br>
+                Status: {data['status']}
             </div>
             """, unsafe_allow_html=True)
             
-            st.caption("Active Alerts in Unit:")
-            st.warning("🛏️ Bed 202: High Risk (Fall)")
-            st.error("🛏️ Bed 410: Sepsis Alert")
-            st.info("🛏️ Bed 105: Pending Labs")    # --- MODULE 3: BATCH ANALYSIS (CSV) ---
+            st.info("ℹ️ Note: Queue is empty. Waiting for new admissions.")
+    
+    # --- MODULE 3: BATCH ANALYSIS (CSV) ---
     elif menu == "Batch Analysis (CSV)":
         st.subheader("Bulk Patient Processing")
         
