@@ -281,8 +281,8 @@ def chatbot_response(text):
         # ------------------------------------------------------
         # 6. ENDOCRINE (Hormones)
         # ------------------------------------------------------
-        "diabetes type 1": "Autoimmune. No insulin. DKA risk. Insulin dependent.",
-        "diabetes type 2": "Insulin resistance. Lifestyle + Metformin.",
+        "DM 1": "Autoimmune. No insulin. DKA risk. Insulin dependent.",
+        "DM 2": "Insulin resistance. Lifestyle + Metformin.",
         "dka": "Diabetic Ketoacidosis. Acidosis + Ketones. ICU care.",
         "hhs": "Hyperosmolar Hyperglycemic State. Glucose > 600. Dehydration.",
         "hypoglycemia": "Low Sugar (<70). Sweating, confusion. Glucose needed.",
@@ -291,6 +291,13 @@ def chatbot_response(text):
         "addison": "Adrenal insufficiency. Low cortisol. Bronze skin, hypotension.",
         "cushing": "High cortisol. Moon face, buffalo hump, high sugar.",
 
+        # --- ENDOCRINE (Add these lines) ---
+        "diabetes": "Chronic condition affecting how the body processes blood sugar (glucose). High sugar damages vessels/nerves.",
+        "prediabetes": "Elevated blood sugar (A1c 5.7-6.4%). Warning sign before Type 2 Diabetes. Reversible with lifestyle changes.",
+        "gestational diabetes": "High blood sugar during pregnancy. Risks: Large baby (Macrosomia). Usually resolves after birth.",
+        "neuropathy": "Nerve damage often caused by Diabetes. Symptoms: Numbness, tingling, burning pain in feet/hands.",
+        "retinopathy": "Eye damage caused by Diabetes. Leading cause of blindness. Needs annual eye exam.",
+        
         # ------------------------------------------------------
         # 7. INFECTIOUS DISEASE
         # ------------------------------------------------------
