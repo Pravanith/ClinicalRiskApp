@@ -80,46 +80,64 @@ except Exception as e:
 # ---------------------------------------------------------
 
 # A. AKI Risk (Kidney)
-def calculate_aki_risk(age, diuretic, acei, high_bp, chemo, creat, nsaid, heart_failure):
+def calculate_aki_risk(age, diuretic, acei, sys_bp, chemo, creat, nsaid, heart_failure):
     score = 0
+    
+    # 1. Medications & Conditions (Always count these)
     score += 30 if diuretic else 0
     score += 40 if acei else 0
-    score += 25 if nsaid else 0       
-    score += 20 if age > 75 else 0
-    score += 15 if heart_failure else 0 
-    score += 10 if high_bp else 0
+    score += 25 if nsaid else 0
+    score += 15 if heart_failure else 0
     score += 20 if chemo else 0
     
-    if creat > 1.5: score += 30
-    elif creat > 1.2: score += 15
+    # 2. Demographics (Only count if valid)
+    if age > 0:
+        score += 20 if age > 75 else 0
+        
+    # 3. Vitals (FIX: Only check BP if entered > 0)
+    if sys_bp > 0:
+        score += 10 if sys_bp > 160 else 0  # Hypertension stress
+        score += 20 if sys_bp < 90 else 0   # Hypotension/Shock
+    
+    # 4. Labs (FIX: Only check Creatinine if entered > 0)
+    if creat > 0:
+        if creat > 1.5: score += 30
+        elif creat > 1.2: score += 15
+        
     return min(score, 100)
 
 # B. Sepsis Screen (qSOFA)
 def calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, temp_c):
     qsofa = 0
-    # qSOFA Criteria
-    if sys_bp > 0 and sys_bp <= 100: qsofa += 1
-    if resp_rate >= 22: qsofa += 1
-    if altered_mental: qsofa += 1
     
-    # Fever check (SIRS criteria)
+    # FIX: Only score hypotension if BP is actually entered (>0)
+    if sys_bp > 0 and sys_bp <= 100: 
+        qsofa += 1
+        
+    # FIX: Only score tachypnea if RR is actually entered (>0)
+    if resp_rate > 0 and resp_rate >= 22: 
+        qsofa += 1
+        
+    if altered_mental: 
+        qsofa += 1
+    
+    # Fever check (SIRS criteria) - Only if temp entered
     if temp_c > 0 and (temp_c > 38.0 or temp_c < 36.0):
         qsofa += 0.5
     
-    if qsofa >= 2: return 90  # High Risk
-    if qsofa >= 1: return 45  # Moderate Risk
-    return 5                  # Low Risk
+    # Return Probability % (Not raw score)
+    if qsofa >= 2: return 90   # High Probability
+    if qsofa >= 1: return 45   # Moderate Probability
+    return 0                   # Normal (0% Probability)
 
-# C. Hypoglycemic Risk (Blood Sugar)
-def calculate_hypoglycemic_risk(insulin, renal, hba1c_high, neuropathy, recent_dka):
+# C. Hypoglycemic Risk
+def calculate_hypoglycemic_risk(insulin, renal, hba1c_high, recent_dka):
     score = 0
     score += 30 if insulin else 0
     score += 45 if renal else 0
     score += 20 if hba1c_high else 0
-    score += 10 if neuropathy else 0
     score += 20 if recent_dka else 0 
     return min(score, 100)
-
 # D. Interaction Database
 interaction_db = {
     ("sildenafil", "nitroglycerin"): "CRITICAL: Fatal hypotension. Contraindicated.",
