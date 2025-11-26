@@ -3,7 +3,41 @@ import pandas as pd
 import numpy as np
 import xgboost as xgb
 import os
+import sqlite3
 
+# ---------------------------------------------------------
+# DATABASE ENGINE (SQL)
+# ---------------------------------------------------------
+def init_db():
+    conn = sqlite3.connect('clinical_data.db')
+    c = conn.cursor()
+    # Create table if not exists
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS patient_history (
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            age INTEGER,
+            gender TEXT,
+            sbp INTEGER,
+            aki_risk_score INTEGER,
+            bleeding_risk_score REAL,
+            status TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def save_patient_to_db(age, gender, sbp, aki, bleed, status):
+    conn = sqlite3.connect('clinical_data.db')
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO patient_history (age, gender, sbp, aki_risk_score, bleeding_risk_score, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (age, gender, sbp, aki, bleed, status))
+    conn.commit()
+    conn.close()
+
+# Initialize DB on app start
+init_db()
 # ---------------------------------------------------------
 # 1. PAGE CONFIGURATION
 # ---------------------------------------------------------
@@ -194,6 +228,7 @@ else:
         st.title("Navigation")
         menu = st.radio("Select Module", [
             "Risk Calculator", 
+            "Patient History (SQL)",  
             "Live Dashboard", 
             "Batch Analysis (CSV)", 
             "Medication Checker", 
@@ -274,14 +309,14 @@ else:
 
             submitted = st.form_submit_button("Run Analysis & Update Dashboard", type="primary")
 
-            if submitted:
-                # Logic: Convert Temp to Celsius
+           if submitted:
+                # [EXISTING] Logic: Convert Temp to Celsius
                 if temp_scale == "°F":
                     final_temp_c = (temp_input - 32) * 5/9
                 else:
                     final_temp_c = temp_input
 
-                # 1. AI Prediction (Bleeding)
+                # [EXISTING] 1. AI Prediction (Bleeding)
                 is_high_bp = 1 if sys_bp > 140 else 0
                 
                 input_df = pd.DataFrame({
@@ -296,13 +331,13 @@ else:
                 })
                 pred_bleeding = bleeding_model.predict(input_df)[0]
                 
-                # 2. Rule Prediction (AKI)
+                # [EXISTING] 2. Rule Prediction (AKI)
                 pred_aki = calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
                 
-                # 3. Rule Prediction (Sepsis)
+                # [EXISTING] 3. Rule Prediction (Sepsis)
                 pred_sepsis = calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
 
-                # 4. Update Session
+                # [EXISTING] 4. Update Session
                 st.session_state['patient_data'] = {
                     'id': 'Calculated Patient', 'age': age,
                     'bleeding_risk': float(pred_bleeding), 
@@ -318,9 +353,50 @@ else:
                 r2.metric("AKI Risk (Rule)", f"{pred_aki}%")
                 r3.metric("Sepsis Risk (qSOFA)", f"{pred_sepsis}%")
                 
-                # Lab Alerts
+                # [EXISTING] Lab Alerts
                 if potassium > 5.5: st.error("⚠️ HYPERKALEMIA ALERT: K+ > 5.5 (Arrhythmia Risk)")
                 if platelets < 100: st.error("⚠️ THROMBOCYTOPENIA: Bleeding Risk")
+
+                # ---------------------------------------------------------
+                # 👇 INSERT HERE (Make sure it is indented inside 'if submitted:')
+                # ---------------------------------------------------------
+                save_patient_to_db(
+                    age, 
+                    gender, 
+                    sys_bp, 
+                    int(pred_aki), 
+                    float(pred_bleeding), 
+                    'Critical' if (pred_bleeding > 50 or pred_aki > 50) else 'Stable'
+                )
+                st.toast("✅ Patient Data Saved to Database!", icon="💾")
+    
+    #MODULE SQL
+    # ---------------------------------------------------------
+    elif menu == "Patient History (SQL)":
+        st.subheader("🗄️ Patient History Database")
+        
+        # Load Data from SQL
+        conn = sqlite3.connect('clinical_data.db')
+        history_df = pd.read_sql("SELECT * FROM patient_history ORDER BY timestamp DESC", conn)
+        conn.close()
+        
+        if not history_df.empty:
+            st.dataframe(history_df)
+            
+            st.markdown("### 📊 Cohort Analytics")
+            c1, c2 = st.columns(2)
+            c1.bar_chart(history_df['aki_risk_score'])
+            c2.line_chart(history_df['sbp'])
+            
+            if st.button("🗑️ Clear Database"):
+                conn = sqlite3.connect('clinical_data.db')
+                conn.execute("DELETE FROM patient_history")
+                conn.commit()
+                conn.close()
+                st.rerun()
+        else:
+            st.info("No patient records found in database yet. Go to 'Risk Calculator' and run an analysis!")
+                    
     # --- MODULE 2: LIVE DASHBOARD ---
     elif menu == "Live Dashboard":
         data = st.session_state['patient_data']
