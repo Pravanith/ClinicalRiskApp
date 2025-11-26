@@ -357,19 +357,100 @@ else:
             <div style="background-color:#f8d7da; color:#721c24; padding:10px; border-radius:5px;">
                 <strong>Patient C (Room 105)</strong><br>🔴 Risk: 92% (Sepsis)</div>""", unsafe_allow_html=True)
 
-    # --- MODULE 3: BATCH ANALYSIS (CSV) ---
+   # --- MODULE 3: BATCH ANALYSIS (CSV) ---
     elif menu == "Batch Analysis (CSV)":
         st.subheader("Bulk Patient Processing")
-        tab1, tab2 = st.tabs(["📄 CSV Data", "🖼️ Medical Imaging"])
+        
+        # 1. Download Template Button (Helper for User)
+        sample_data = {
+            'Age': [65, 80, 45, 72],
+            'Creatinine': [1.1, 1.8, 0.9, 2.5],
+            'Systolic_BP': [130, 160, 120, 110],
+            'Diuretic_Use': [0, 1, 0, 1],
+            'ACEI_Use': [1, 1, 0, 0],
+            'Chemo_Hx': [0, 0, 1, 0],
+            'NSAID_Use': [0, 1, 1, 0],
+            'Heart_Failure_Hx': [0, 1, 0, 1]
+        }
+        df_sample = pd.DataFrame(sample_data)
+        
+        with st.expander("ℹ️ CSV Format Guide"):
+            st.write("Your CSV must contain these columns (0=No, 1=Yes):")
+            st.dataframe(df_sample)
+            st.download_button("📥 Download Template CSV", 
+                               df_sample.to_csv(index=False), 
+                               "patient_template.csv", "text/csv")
+
+        # 2. Main Processing Tool
+        tab1, tab2 = st.tabs(["📄 CSV Data Processor", "🖼️ Medical Imaging"])
+        
         with tab1:
             uploaded_csv = st.file_uploader("Upload Patient Cohort (CSV)", type=["csv"])
+            
             if uploaded_csv:
                 df = pd.read_csv(uploaded_csv)
-                st.dataframe(df.head())
+                st.write(f"**Loaded {len(df)} patient records.**")
+                st.dataframe(df.head(3))
+
+                if st.button("⚡ Run Risk Analysis on All Rows"):
+                    try:
+                        # PROGRESS BAR
+                        progress_bar = st.progress(0)
+                        
+                        # LOGIC: Iterate via Pandas Apply (Vectorized iteration)
+                        # We map the CSV columns to the function arguments
+                        def batch_risk(row):
+                            return calculate_aki_risk(
+                                age=row.get('Age', 60), 
+                                diuretic=row.get('Diuretic_Use', 0), 
+                                acei=row.get('ACEI_Use', 0), 
+                                # Logic: Convert Sys BP to High BP Boolean
+                                high_bp=1 if row.get('Systolic_BP', 120) > 140 else 0,
+                                chemo=row.get('Chemo_Hx', 0), 
+                                creat=row.get('Creatinine', 1.0), 
+                                nsaid=row.get('NSAID_Use', 0), 
+                                heart_failure=row.get('Heart_Failure_Hx', 0)
+                            )
+
+                        # Apply function to create new column
+                        df['AKI_Risk_Score'] = df.apply(batch_risk, axis=1)
+                        
+                        # Add a Risk Label based on score
+                        df['Risk_Category'] = df['AKI_Risk_Score'].apply(
+                            lambda x: '🔴 CRITICAL' if x > 50 else ('🟠 High' if x > 30 else '🟢 Low')
+                        )
+
+                        progress_bar.progress(100)
+                        st.success("Batch Processing Complete!")
+
+                        # Display Summary Metrics
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric("Total Patients", len(df))
+                        m2.metric("High Risk Cases", len(df[df['AKI_Risk_Score'] > 30]))
+                        m3.metric("Avg Risk Score", f"{df['AKI_Risk_Score'].mean():.1f}")
+
+                        # Show Result
+                        st.dataframe(df.style.map(
+                            lambda x: 'color: red; font-weight: bold;' if x == '🔴 CRITICAL' else None, 
+                            subset=['Risk_Category']
+                        ))
+
+                        # Download Result
+                        st.download_button(
+                            "📥 Download Analyzed Data",
+                            df.to_csv(index=False),
+                            "analyzed_patients.csv",
+                            "text/csv"
+                        )
+
+                    except Exception as e:
+                        st.error(f"Error processing CSV: {e}")
+                        st.info("Check your column names match the Template above!")
+
         with tab2:
             uploaded_image = st.file_uploader("Upload Wound/X-Ray (JPG)", type=["jpg"])
             if uploaded_image: st.image(uploaded_image, width=300)
-
+                
    # --- MODULE 4: MEDICATION CHECKER (UPDATED WITH CATEGORIES) ---
     elif menu == "Medication Checker":
         st.subheader("Drug-Drug Interaction Checker")
