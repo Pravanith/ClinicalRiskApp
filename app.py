@@ -281,8 +281,8 @@ def chatbot_response(text):
         # ------------------------------------------------------
         # 6. ENDOCRINE (Hormones)
         # ------------------------------------------------------
-        "DM 1": "Autoimmune. No insulin. DKA risk. Insulin dependent.",
-        "DM 2": "Insulin resistance. Lifestyle + Metformin.",
+        "diabetes type1": "Autoimmune. No insulin. DKA risk. Insulin dependent.",
+        "diabetes type2": "Insulin resistance. Lifestyle + Metformin.",
         "dka": "Diabetic Ketoacidosis. Acidosis + Ketones. ICU care.",
         "hhs": "Hyperosmolar Hyperglycemic State. Glucose > 600. Dehydration.",
         "hypoglycemia": "Low Sugar (<70). Sweating, confusion. Glucose needed.",
@@ -290,8 +290,6 @@ def chatbot_response(text):
         "hyperthyroidism": "High Thyroid. Weight loss, heat intolerance, fast HR.",
         "addison": "Adrenal insufficiency. Low cortisol. Bronze skin, hypotension.",
         "cushing": "High cortisol. Moon face, buffalo hump, high sugar.",
-
-        # --- ENDOCRINE (Add these lines) ---
         "diabetes": "Chronic condition affecting how the body processes blood sugar (glucose). High sugar damages vessels/nerves.",
         "prediabetes": "Elevated blood sugar (A1c 5.7-6.4%). Warning sign before Type 2 Diabetes. Reversible with lifestyle changes.",
         "gestational diabetes": "High blood sugar during pregnancy. Risks: Large baby (Macrosomia). Usually resolves after birth.",
@@ -310,9 +308,20 @@ def chatbot_response(text):
         "cellulitis": "Skin infection. Red, hot, spreading.",
         "abscess": "Pus pocket. Needs drainage (I&D).",
         "osteomyelitis": "Bone infection. Long-term IV antibiotics.",
-
+        
         # ------------------------------------------------------
-        # 8. HEMATOLOGY (Blood)
+        # 8.FEVER & INFLAMMATION (Add these) ---
+        # ------------------------------------------------------
+        "fever": "Pyrexia. Temp > 100.4°F (38.0°C). A sign of inflammation or infection. Treat with Tylenol/Motrin.",
+        "low grade fever": "Mild elevation (99.5°F - 100.3°F). Often viral or inflammatory. Monitor.",
+        "high grade fever": "Temp > 103°F (39.4°C). concerning for bacterial infection. Seek care if persistent.",
+        "hyperpyrexia": "Extreme fever > 106.7°F (41.5°C). Medical emergency. Risk of brain damage/seizures.",
+        "neutropenic fever": "Fever in a chemo patient with low WBC. ONCOLOGIC EMERGENCY. Needs IV Antibiotics within 1 hour.",
+        "chills": "Rigors. Shivering sensation often accompanying a fever spike. Sign of bacteremia (bacteria in blood).",
+        "night sweats": "Drenching sweats at sleep. Red flag for TB, Lymphoma, or Menopause.",
+        
+        # ------------------------------------------------------
+        # 9. HEMATOLOGY (Blood)
         # ------------------------------------------------------
         "anemia": "Low Hemoglobin. Fatigue, pallor. Iron deficiency common.",
         "sickle cell": "Genetic. Pain crises. RBCs shape sickle. Fluids/Pain meds.",
@@ -323,7 +332,7 @@ def chatbot_response(text):
         "dvt": "Deep Vein Thrombosis. Leg clot.",
 
         # ------------------------------------------------------
-        # 9. MUSCULOSKELETAL
+        # 10. MUSCULOSKELETAL
         # ------------------------------------------------------
         "osteoarthritis": "Wear-and-tear. Joint pain. Worse with use.",
         "rheumatoid arthritis": "Autoimmune. Morning stiffness > 30 mins.",
@@ -332,7 +341,7 @@ def chatbot_response(text):
         "compartment syndrome": "Muscle pressure. Pain out of proportion. Emergency surgery.",
 
         # ------------------------------------------------------
-        # 10. MEDICATIONS (Pharmacology)
+        # 11. MEDICATIONS (Pharmacology)
         # ------------------------------------------------------
         "lisinopril": "ACE Inhibitor (BP). Side effects: Cough, High K+.",
         "amlodipine": "Calcium Channel Blocker (BP). Side effect: Leg swelling.",
@@ -370,7 +379,7 @@ def chatbot_response(text):
         "epinephrine": "Adrenaline. Anaphylaxis/Code Blue.",
 
         # ------------------------------------------------------
-        # 11. LABS & VITALS
+        # 12. LABS & VITALS
         # ------------------------------------------------------
         "wbc": "White Blood Cells (4.5-11k). High=Infection.",
         "hgb": "Hemoglobin (12-16). Low=Anemia. <7 Transfuse.",
@@ -388,7 +397,7 @@ def chatbot_response(text):
         "ph": "Acidity (7.35-7.45).",
 
         # ------------------------------------------------------
-        # 12. ABBREVIATIONS
+        # 13. ABBREVIATIONS
         # ------------------------------------------------------
         "bid": "Twice a day.",
         "tid": "Three times a day.",
