@@ -185,62 +185,66 @@ else:
             "Medication Checker", 
             "Clinical Chatbot"
         ])
-        st.info("v2.3 - Final Production Build")
+        st.info("v2.6 - Zero-Base Inputs")
 # --- MODULE 1: CALCULATOR (UPDATED: TEMP & WEIGHT SELECTORS) ---
-    if menu == "Risk Calculator":
+if menu == "Risk Calculator":
         st.subheader("Acute Risk Calculator (Advanced)")
+        st.caption("Enter patient values below. Default is 0.")
         
         with st.form("risk_form"):
-            # 1. Demographics & BMI
+            # 1. Demographics
             st.markdown("#### 1. Patient Profile")
             c1, c2, c3, c4 = st.columns(4)
-            age = c1.number_input("Age", 18, 100, 65)
+            # Set default 'value' to 0 (or 0.0 for floats)
+            age = c1.number_input("Age", min_value=0, max_value=120, value=0)
             gender = c2.selectbox("Gender", ["Male", "Female"])
-            height = c3.number_input("Height (cm)", 100, 250, 170)
+            height = c3.number_input("Height (cm)", min_value=0, max_value=250, value=0)
             
-            # UPDATED WEIGHT SECTION (kg/lbs)
             with c4:
                 w_val, w_unit = st.columns([2, 1]) 
-                weight_input = w_val.number_input("Weight", 40.0, 400.0, 70.0)
+                weight_input = w_val.number_input("Weight", min_value=0.0, max_value=400.0, value=0.0)
                 weight_scale = w_unit.selectbox("Unit", ["kg", "lbs"], key="w_unit")
 
-            # Live Logic: Convert Weight for BMI Display
+            # Logic: Convert Weight & BMI
             if weight_scale == "lbs":
                 weight_kg = weight_input * 0.453592
             else:
                 weight_kg = weight_input
 
-            # Live BMI Calculation
-            bmi = weight_kg / ((height/100)**2)
-            c4.caption(f"Calculated BMI: {bmi:.1f}")
+            # Safe BMI Calculation (Prevent Division by Zero)
+            if height > 0:
+                bmi = weight_kg / ((height/100)**2)
+                c4.caption(f"Calculated BMI: {bmi:.1f}")
+            else:
+                c4.caption("Enter Height for BMI")
 
-            # 2. Vitals
+            # 2. Vitals (Defaults to 0)
             st.markdown("#### 2. Vitals Signs")
             v1, v2, v3, v4 = st.columns(4)
-            sys_bp = v1.number_input("Systolic BP", 60, 250, 120)
-            dia_bp = v2.number_input("Diastolic BP", 40, 150, 80)
-            hr = v3.number_input("Heart Rate", 40, 200, 72)
-            resp_rate = v4.number_input("Resp Rate", 8, 50, 16)
+            sys_bp = v1.number_input("Systolic BP", min_value=0, max_value=300, value=0)
+            dia_bp = v2.number_input("Diastolic BP", min_value=0, max_value=200, value=0)
+            hr = v3.number_input("Heart Rate", min_value=0, max_value=300, value=0)
+            resp_rate = v4.number_input("Resp Rate", min_value=0, max_value=60, value=0)
             
-            # UPDATED TEMPERATURE SECTION (C/F)
             v5, v6, v7 = st.columns(3)
             with v5:
                 t_val, t_unit = st.columns([2, 1]) 
-                temp_input = t_val.number_input("Temperature", 30.0, 110.0, 37.0, step=0.1)
+                # Temp default 0 allowed
+                temp_input = t_val.number_input("Temperature", min_value=0.0, max_value=115.0, value=0.0, step=0.1)
                 temp_scale = t_unit.selectbox("Unit", ["°C", "°F"], key="t_unit")
             
-            o2_sat = v6.number_input("O2 Sat (%)", 80, 100, 98)
+            o2_sat = v6.number_input("O2 Sat (%)", min_value=0, max_value=100, value=0)
             altered_mental = v7.checkbox("Altered Mental Status?")
 
-            # 3. Labs
+            # 3. Labs (Defaults to 0)
             st.markdown("#### 3. Laboratory Values")
             l1, l2, l3, l4 = st.columns(4)
-            creat = l1.number_input("Creatinine", 0.5, 10.0, 1.0)
-            inr = l2.number_input("INR", 0.0, 10.0, 1.0)
-            potassium = l3.number_input("Potassium (K+)", 2.0, 8.0, 4.0) 
-            platelets = l4.number_input("Platelets (10^9/L)", 10, 500, 250)
+            creat = l1.number_input("Creatinine", min_value=0.0, max_value=20.0, value=0.0)
+            inr = l2.number_input("INR", min_value=0.0, max_value=20.0, value=0.0)
+            potassium = l3.number_input("Potassium (K+)", min_value=0.0, max_value=10.0, value=0.0) 
+            platelets = l4.number_input("Platelets (10^9/L)", min_value=0, max_value=1000, value=0)
 
-            # 4. Medications & History
+            # 4. Medications
             st.markdown("#### 4. Meds & History")
             m1, m2, m3, m4 = st.columns(4)
             anticoag = m1.checkbox("Anticoagulant")
@@ -277,7 +281,7 @@ else:
                     'high_bp': [is_high_bp],
                     'antiplatelet': [0], 
                     'gender_female': [1 if gender == "Female" else 0],
-                    'weight': [weight_kg], # Uses the converted KG value
+                    'weight': [weight_kg], 
                     'liver_disease': [1 if liver_disease else 0]
                 })
                 pred_bleeding = bleeding_model.predict(input_df)[0]
@@ -285,17 +289,8 @@ else:
                 # 2. Rule Prediction (AKI)
                 pred_aki = calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
                 
-                # 3. Rule Prediction (Sepsis - qSOFA + Fever Check)
-                qsofa_score = 0
-                if sys_bp <= 100: qsofa_score += 1
-                if resp_rate >= 22: qsofa_score += 1
-                if altered_mental: qsofa_score += 1
-                
-                # Fever Check
-                if final_temp_c > 38.0 or final_temp_c < 36.0: 
-                    qsofa_score += 0.5 
-
-                pred_sepsis = 90 if qsofa_score >= 2 else (45 if qsofa_score >= 1 else 5)
+                # 3. Rule Prediction (Sepsis)
+                pred_sepsis = calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
 
                 # 4. Update Session
                 st.session_state['patient_data'] = {
@@ -313,9 +308,9 @@ else:
                 r2.metric("AKI Risk (Rule)", f"{pred_aki}%")
                 r3.metric("Sepsis Risk (qSOFA)", f"{pred_sepsis}%")
                 
-                # Lab Alerts
-                if potassium > 5.5: st.error("⚠️ HYPERKALEMIA ALERT: K+ > 5.5 (Arrhythmia Risk)")
-                if platelets < 100: st.error("⚠️ THROMBOCYTOPENIA: Bleeding Risk")
+                # Lab Alerts (Only trigger if values are entered)
+                if potassium > 5.5: st.error("⚠️ HYPERKALEMIA ALERT: K+ > 5.5")
+                if platelets > 0 and platelets < 100: st.error("⚠️ THROMBOCYTOPENIA: Bleeding Risk")
 
     # --- MODULE 2: LIVE DASHBOARD ---
     elif menu == "Live Dashboard":
