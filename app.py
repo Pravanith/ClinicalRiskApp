@@ -334,14 +334,14 @@ else:
                 })
                 pred_bleeding = bleeding_model.predict(input_df)[0]
 
-                # 2. HAS-BLED Score (Clinical Rule for Bleeding)
+                # 2. HAS-BLED Score
                 has_bled = 0
-                if sys_bp > 160: has_bled += 1 # H
-                if creat > 2.2 or liver_disease: has_bled += 1 # A (Abnormal renal/liver)
-                if gi_bleed: has_bled += 1 # B
-                if inr > 1.0: has_bled += 1 # L (Labile INR proxy)
-                if age > 65: has_bled += 1 # E
-                if nsaid or anticoag: has_bled += 1 # D
+                if sys_bp > 160: has_bled += 1 
+                if creat > 2.2 or liver_disease: has_bled += 1 
+                if gi_bleed: has_bled += 1 
+                if inr > 1.0: has_bled += 1 
+                if age > 65: has_bled += 1 
+                if nsaid or anticoag: has_bled += 1 
                 
                 # 3. AKI Risk (Rule)
                 pred_aki = calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
@@ -355,36 +355,56 @@ else:
                 
                 pred_sepsis = calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
                 
-                # --- C. SYNDROME DETECTION (THE "CAUSE" LOGIC) ---
+                # --- C. COMPREHENSIVE SYNDROME DETECTION ---
                 syndromes = []
-                if pred_sepsis > 40 and lactate > 2.0 and map_val < 65:
-                    syndromes.append("SEPTIC SHOCK (Infection + Hypoperfusion)")
-                elif pred_sepsis > 40:
-                    syndromes.append("SEPSIS (Infection)")
-                
-                if sys_bp > 180 or dia_bp > 110:
+
+                # 1. SEPSIS & INFECTION (Score-Based OR Lab-Based)
+                if pred_sepsis >= 2 and lactate > 2.0 and map_val < 65:
+                    syndromes.append("SEPTIC SHOCK (Critical)")
+                elif pred_sepsis >= 2 or sirs_score >= 3:
+                    syndromes.append("SEPSIS ALERT (Clinical Criteria Met)")
+                elif wbc > 12.0 or final_temp_c > 38.5:
+                    syndromes.append("INFECTION RISK (SIRS)")
+
+                # 2. BLEEDING & COAGULATION (AI-Based OR Rule-Based)
+                if hgb < 7.0 and sys_bp < 90:
+                    syndromes.append("HEMORRHAGIC SHOCK")
+                elif pred_bleeding > 40.0:
+                    syndromes.append(f"HIGH BLEEDING RISK (AI Prediction {pred_bleeding:.1f}%)")
+                elif has_bled >= 3:
+                    syndromes.append("HIGH BLEEDING RISK (HAS-BLED Score)")
+                elif inr > 3.5:
+                    syndromes.append("SUPRA-THERAPEUTIC INR (Bleed Risk)")
+
+                # 3. RENAL (Score-Based OR Lab-Based)
+                if creat > 3.0 or (creat > 1.5 and bun > 30):
+                    syndromes.append("ACUTE KIDNEY INJURY (Current Failure)")
+                elif pred_aki >= 50:
+                    syndromes.append("HIGH RENAL RISK (Nephrotoxin Load)")
+
+                # 4. HEMODYNAMIC (Vitals Only)
+                if sys_bp > 180 or dia_bp > 120:
                     syndromes.append("HYPERTENSIVE CRISIS")
-                elif sys_bp < 90:
+                elif map_val < 65:
                     syndromes.append("HYPOTENSION / SHOCK")
-                    
-                if creat > 1.5 and bun > 20:
-                    syndromes.append("ACUTE KIDNEY INJURY (Renal Failure)")
-                    
-                if inr > 1.5 and platelets < 150 and liver_disease:
-                    syndromes.append("LIVER DECOMPENSATION")
-                    
-                if hgb < 8.0 and gi_bleed:
-                    syndromes.append("ACTIVE GI HEMORRHAGE")
+                elif hr > 130:
+                    syndromes.append("UNSTABLE TACHYCARDIA")
+
+                # 5. METABOLIC / RESPIRATORY
+                if glucose < 70:
+                    syndromes.append("HYPOGLYCEMIA")
+                elif o2_sat < 90:
+                    syndromes.append("RESPIRATORY FAILURE (Hypoxia)")
 
                 final_diagnosis = " + ".join(syndromes) if syndromes else "No Acute Syndromes Detected"
 
                 # --- D. SAVE DATA ---
-                status_calc = 'Critical' if len(syndromes) > 0 or pred_bleeding > 50 else 'Stable'
+                status_calc = 'Critical' if len(syndromes) > 0 else 'Stable'
                 st.session_state['patient_data'] = {
                     'id': 'Calculated Patient', 'age': age,
                     'bleeding_risk': float(pred_bleeding), 
                     'aki_risk': int(pred_aki), 'sepsis_risk': int(pred_sepsis),
-                    'hypo_risk': 0, 'status': status_calc
+                    'hypo_risk': 100 if glucose < 70 else 0, 'status': status_calc
                 }
                 
                 save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
@@ -393,14 +413,14 @@ else:
                 st.divider()
                 st.subheader("📊 Clinical Analysis Results")
                 
-                # Row 1: Primary Risks
+                # Row 1
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Bleeding Risk (AI)", f"{pred_bleeding:.1f}%", delta_color="inverse")
                 m2.metric("AKI Risk (Rule)", f"{pred_aki}%", delta_color="inverse")
-                m3.metric("Sepsis Score (qSOFA)", f"{pred_sepsis}", "High" if pred_sepsis>1 else "Low")
+                m3.metric("Sepsis Score (qSOFA)", f"{pred_sepsis}", "High" if pred_sepsis>=2 else "Low")
                 m4.metric("HAS-BLED Score", f"{has_bled}/9", "High Risk" if has_bled >=3 else "Low Risk")
 
-                # Row 2: Hemodynamics & Status
+                # Row 2
                 d1, d2, d3, d4 = st.columns(4)
                 d1.metric("MAP (Perfusion)", f"{int(map_val)} mmHg", "Low" if map_val < 65 else "Normal")
                 d2.metric("SIRS Score", f"{sirs_score}/4", "Inflammation" if sirs_score >=2 else "Normal")
@@ -408,65 +428,60 @@ else:
                 d4.metric("Pain Status", f"{pain}/10", "Severe" if pain > 7 else "Managed")
 
                 # "THE CAUSE" SECTION
-                st.info(f"🤖 **Clinical Impression (Possible Cause):** {final_diagnosis}")
+                if len(syndromes) > 0:
+                    st.error(f"🤖 **Clinical Impression:** {final_diagnosis}")
+                else:
+                    st.info(f"🤖 **Clinical Impression:** {final_diagnosis}")
 
-               # --- F. DETAILED ALERTS (SENSITIVE MODE) ---
+                # --- F. DETAILED ALERTS (SENSITIVE MODE) ---
                 with st.expander("⚠️ Detailed Clinical Alerts (Expand for details)", expanded=True):
                     
-                    # --- 1. VITALS ALERTS ---
-                    # Blood Pressure & MAP
-                    if map_val < 65: st.error(f"🔴 CRITICAL HYPOTENSION: MAP {int(map_val)} mmHg. Shock risk.")
-                    elif map_val < 70: st.warning(f"🟠 LOW PERFUSION: MAP {int(map_val)} mmHg.")
-                    
-                    if sys_bp > 180 or dia_bp > 120: st.error(f"🔴 HYPERTENSIVE CRISIS: {sys_bp}/{dia_bp} mmHg.")
-                    elif sys_bp > 140 or dia_bp > 90: st.warning(f"🟠 HYPERTENSION: {sys_bp}/{dia_bp} mmHg.")
+                    # 1. RISK ALERTS (Based on Prediction Scores)
+                    if pred_aki >= 50:
+                         st.error(f"🔴 RENAL RISK ({pred_aki}%): Patient is on multiple nephrotoxic meds (NSAIDs, ACEi, Diuretics).")
+                    if pred_bleeding > 40:
+                         st.error(f"🔴 BLEEDING RISK ({pred_bleeding:.1f}%): AI Model indicates high probability of hemorrhage.")
+                    if has_bled >= 3:
+                         st.warning(f"🟠 HAS-BLED SCORE ({has_bled}): Clinical criteria suggest bleed risk.")
+                    if pred_sepsis >= 2:
+                         st.error(f"🔴 SEPSIS RISK: qSOFA Score of {pred_sepsis} suggests organ dysfunction.")
 
-                    # Heart Rate
+                    # 2. VITALS ALERTS
+                    if map_val < 65: st.error(f"🔴 CRITICAL HYPOTENSION: MAP {int(map_val)} mmHg.")
+                    elif map_val < 70: st.warning(f"🟠 LOW PERFUSION: MAP {int(map_val)} mmHg.")
+                    if sys_bp > 180: st.error(f"🔴 HYPERTENSIVE CRISIS: SBP {sys_bp} mmHg.")
+                    
                     if hr > 120: st.error(f"🔴 SEVERE TACHYCARDIA: HR {hr} bpm.")
                     elif hr > 100: st.warning(f"🟠 TACHYCARDIA: HR {hr} bpm.")
-                    elif hr < 50: st.warning(f"🟠 BRADYCARDIA: HR {hr} bpm.")
-
-                    # Oxygen & Temp
-                    if o2_sat < 90: st.error(f"🔴 CRITICAL HYPOXIA: SpO2 {o2_sat}%. Intubate/NRB.")
-                    elif o2_sat < 94: st.warning(f"🟠 HYPOXIA: SpO2 {o2_sat}%. Needs O2.")
+                    
+                    if o2_sat < 90: st.error(f"🔴 CRITICAL HYPOXIA: SpO2 {o2_sat}%.")
+                    elif o2_sat < 94: st.warning(f"🟠 HYPOXIA: SpO2 {o2_sat}%.")
                     
                     if final_temp_c > 38.0: st.warning(f"🟠 FEVER: {final_temp_c:.1f}°C.")
-                    elif final_temp_c < 36.0: st.warning(f"🟠 HYPOTHERMIA: {final_temp_c:.1f}°C.")
 
-                    # --- 2. LAB ALERTS ---
-                    # Glucose
-                    if glucose < 50: st.error(f"🔴 CRITICAL HYPOGLYCEMIA: {glucose} mg/dL. Coma risk.")
-                    elif glucose < 70: st.warning(f"🟠 HYPOGLYCEMIA: {glucose} mg/dL.")
-                    elif glucose > 250: st.warning(f"🟠 HYPERGLYCEMIA: {glucose} mg/dL.")
-
-                    # CBC (WBC, Hgb, Plt)
-                    if wbc > 12.0: st.warning(f"🟠 LEUKOCYTOSIS (Infection?): WBC {wbc}.")
-                    elif wbc < 4.0: st.warning(f"🟠 LEUKOPENIA (Immune Risk): WBC {wbc}.")
+                    # 3. LAB ALERTS
+                    if glucose < 70: st.warning(f"🟠 HYPOGLYCEMIA: {glucose} mg/dL.")
                     
-                    if hgb < 7.0: st.error(f"🔴 CRITICAL ANEMIA: Hgb {hgb}. Transfuse.")
+                    if wbc > 12.0: st.warning(f"🟠 LEUKOCYTOSIS: WBC {wbc}.")
+                    if wbc < 4.0: st.warning(f"🟠 LEUKOPENIA: WBC {wbc}.")
+                    
+                    if hgb < 7.0: st.error(f"🔴 CRITICAL ANEMIA: Hgb {hgb}.")
                     elif hgb < 12.0: st.warning(f"🟠 ANEMIA: Hgb {hgb}.")
                     
-                    if platelets < 50: st.error(f"🔴 CRITICAL THROMBOCYTOPENIA: Plt {platelets}. Bleed risk.")
+                    if platelets < 50: st.error(f"🔴 CRITICAL THROMBOCYTOPENIA: Plt {platelets}.")
                     elif platelets < 150: st.warning(f"🟠 THROMBOCYTOPENIA: Plt {platelets}.")
-
-                    # Metabolic (Lactate, K+, Renal)
-                    if lactate > 4.0: st.error(f"🔴 SEPTIC SHOCK / ISCHEMIA: Lactate {lactate} mmol/L.")
-                    elif lactate > 2.0: st.warning(f"🟠 ELEVATED LACTATE: {lactate} mmol/L.")
                     
                     if potassium > 6.0: st.error(f"🔴 CRITICAL HYPERKALEMIA: K+ {potassium}.")
                     elif potassium > 5.0: st.warning(f"🟠 HYPERKALEMIA: K+ {potassium}.")
-                    elif potassium < 3.5: st.warning(f"🟠 HYPOKALEMIA: K+ {potassium}.")
                     
-                    if creat > 1.2 or bun > 20: st.warning(f"🟠 RENAL INSUFFICIENCY: Cr {creat} / BUN {bun}.")
+                    if creat > 1.2: st.warning(f"🟠 RENAL IMPAIRMENT: Cr {creat}.")
 
-                    # --- 3. MEDICATION ALERTS ---
-                    if nsaid and anticoag: st.error("❌ CONTRAINDICATION: NSAID + Blood Thinner = High Bleed Risk.")
-                    if nsaid and creat > 1.5: st.error("❌ CONTRAINDICATION: NSAIDs are nephrotoxic in Kidney Failure.")
-                    if acei and potassium > 5.0: st.warning("⚠️ MED WARNING: ACEi may worsen Hyperkalemia.")
-                    if active_chemo and wbc < 4.0: st.error("🔴 NEUTROPENIC FEVER RISK: Chemo + Low WBC.")
+                    # 4. MEDICATION ALERTS
+                    if nsaid and anticoag: st.error("❌ CONTRAINDICATION: NSAID + Anticoagulant.")
+                    if nsaid and creat > 1.5: st.error("❌ CONTRAINDICATION: NSAIDs in Kidney Failure.")
+                    if active_chemo and wbc < 4.0: st.error("🔴 NEUTROPENIC FEVER RISK.")
 
-                st.toast("✅ Patient Analysis Complete", icon="🩺")
-                # --- MODULE SQL HISTORY ---
+                st.toast("✅ Patient Analysis Complete", icon="🩺")                # --- MODULE SQL HISTORY ---
     elif menu == "Patient History (SQL)":
         st.subheader("🗄️ Patient History Database")
         
