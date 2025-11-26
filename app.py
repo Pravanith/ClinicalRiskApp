@@ -307,8 +307,7 @@ else:
             heart_failure = h1.checkbox("Heart Failure") 
             liver_disease = h2.checkbox("Liver Disease")
 
-            submitted = st.form_submit_button("Run Analysis & Update Dashboard", type="primary")
-
+           submitted = st.form_submit_button("Run Analysis & Update Dashboard", type="primary")
            if submitted:
                 # [EXISTING] Logic: Convert Temp to Celsius
                 if temp_scale == "°F":
