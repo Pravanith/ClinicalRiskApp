@@ -539,100 +539,241 @@ else:
             
             st.info("ℹ️ Note: Queue is empty. Waiting for new admissions.")
     
-    # --- MODULE 4: BATCH ANALYSIS (CSV) ---
+    # --- MODULE 4: BATCH ANALYSIS (EXPANDED DIAGNOSTIC ENGINE) ---
     elif menu == "Batch Analysis (CSV)":
-        st.subheader("Bulk Patient Processing")
+        st.subheader("Bulk Patient Processing & Diagnostic Triage")
         
-        # 1. Download Template Button (Helper for User)
-        sample_data = {
-            'Age': [65, 80, 45, 72],
-            'Creatinine': [1.1, 1.8, 0.9, 2.5],
-            'Systolic_BP': [130, 160, 120, 110],
-            'Diuretic_Use': [0, 1, 0, 1],
-            'ACEI_Use': [1, 1, 0, 0],
-            'Chemo_Hx': [0, 0, 1, 0],
-            'NSAID_Use': [0, 1, 1, 0],
-            'Heart_Failure_Hx': [0, 1, 0, 1]
-        }
-        df_sample = pd.DataFrame(sample_data)
-        
-        with st.expander("ℹ️ CSV Format Guide"):
-            st.write("Your CSV must contain these columns (0=No, 1=Yes):")
-            st.dataframe(df_sample)
-            st.download_button("📥 Download Template CSV", 
-                               df_sample.to_csv(index=False), 
-                               "patient_template.csv", "text/csv")
+        # 1. Helper: Download Template
+        with st.expander("ℹ️  How to format your CSV (Click to expand)"):
+            st.write("Your CSV file must have these columns:")
+            sample_data = {
+                'Age': [65, 72, 45],
+                'Gender': ['Male', 'Female', 'Male'],
+                'Weight_kg': [80, 65, 90],
+                'Systolic_BP': [130, 220, 80],   
+                'Diastolic_BP': [80, 120, 40],   
+                'Heart_Rate': [72, 40, 150],   
+                'Resp_Rate': [16, 8, 40],
+                'Temp_C': [37.0, 38.5, 34.0],
+                'O2_Sat': [98, 92, 84],         
+                'WBC': [6.0, 0.5, 25.0],       
+                'Glucose': [110, 700, 55],      
+                'Creatinine': [1.1, 2.5, 3.0],
+                'INR': [1.0, 3.2, 1.8],
+                'Altered_Mental': [0, 1, 1],
+                'Anticoagulant': [1, 1, 0],
+                'NSAID': [0, 1, 0],
+                'Heart_Failure': [0, 1, 1],
+                'Liver_Disease': [0, 0, 1],
+                'Hx_GI_Bleed': [0, 1, 0]
+            }
+            df_sample = pd.DataFrame(sample_data)
+            st.dataframe(df_sample, use_container_width=True)
+            
+            # Download Button
+            csv_template = df_sample.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Diagnostic Template",
+                data=csv_template,
+                file_name="diagnostic_patient_data.csv",
+                mime="text/csv"
+            )
 
         # 2. Main Processing Tool
-        tab1, tab2 = st.tabs(["📄 CSV Data Processor", "🖼️ Medical Imaging"])
+        tab1, tab2 = st.tabs(["📄 Diagnostic Processor", "🖼️ Medical Imaging"])
         
         with tab1:
-            uploaded_csv = st.file_uploader("Upload Patient Cohort (CSV)", type=["csv"])
+            uploaded_csv = st.file_uploader("Upload Patient Data (CSV)", type=["csv"])
             
             if uploaded_csv:
-                df = pd.read_csv(uploaded_csv)
-                st.write(f"**Loaded {len(df)} patient records.**")
-                st.dataframe(df.head(3))
-
-                if st.button("⚡ Run Risk Analysis on All Rows"):
-                    try:
-                        # PROGRESS BAR
+                try:
+                    df = pd.read_csv(uploaded_csv)
+                    st.success(f"Successfully loaded {len(df)} patient records.")
+                    
+                    if st.button("⚡ Run AI Diagnostic Engine", type="primary"):
                         progress_bar = st.progress(0)
                         
-                        # LOGIC: Iterate via Pandas Apply (Vectorized iteration)
-                        # We map the CSV columns to the function arguments
-                        def batch_risk(row):
-                            return calculate_aki_risk(
-                                age=row.get('Age', 60), 
-                                diuretic=row.get('Diuretic_Use', 0), 
-                                acei=row.get('ACEI_Use', 0), 
-                                # Logic: Convert Sys BP to High BP Boolean
-                                high_bp=1 if row.get('Systolic_BP', 120) > 140 else 0,
-                                chemo=row.get('Chemo_Hx', 0), 
-                                creat=row.get('Creatinine', 1.0), 
-                                nsaid=row.get('NSAID_Use', 0), 
-                                heart_failure=row.get('Heart_Failure_Hx', 0)
-                            )
-
-                        # Apply function to create new column
-                        df['AKI_Risk_Score'] = df.apply(batch_risk, axis=1)
+                        # --- A. AI MODEL (Bleeding) ---
+                        ai_inputs = pd.DataFrame()
+                        ai_inputs['age'] = df['Age']
+                        ai_inputs['inr'] = df['INR']
+                        ai_inputs['anticoagulant'] = df['Anticoagulant']
+                        ai_inputs['gi_bleed'] = df['Hx_GI_Bleed']
+                        ai_inputs['high_bp'] = df['Systolic_BP'].apply(lambda x: 1 if x > 140 else 0)
+                        ai_inputs['antiplatelet'] = 0 
+                        ai_inputs['gender_female'] = df['Gender'].apply(lambda x: 1 if x == 'Female' else 0)
+                        ai_inputs['weight'] = df['Weight_kg']
+                        ai_inputs['liver_disease'] = df['Liver_Disease']
                         
-                        # Add a Risk Label based on score
-                        df['Risk_Category'] = df['AKI_Risk_Score'].apply(
-                            lambda x: '🔴 CRITICAL' if x > 50 else ('🟠 High' if x > 30 else '🟢 Low')
-                        )
+                        df['Bleeding_Risk_%'] = bleeding_model.predict(ai_inputs)
+                        progress_bar.progress(30)
+                        
+                        # --- B. CALCULATE METRICS ---
+                        df['MAP'] = (df['Systolic_BP'] + (2 * df['Diastolic_BP'])) / 3
+                        
+                        def calc_sirs(row):
+                            score = 0
+                            if row['Temp_C'] > 38 or row['Temp_C'] < 36: score += 1
+                            if row['Heart_Rate'] > 90: score += 1
+                            if row['Resp_Rate'] > 20: score += 1
+                            if row['WBC'] > 12 or row['WBC'] < 4: score += 1
+                            return score
+                        
+                        df['SIRS_Score'] = df.apply(calc_sirs, axis=1)
+                        progress_bar.progress(60)
 
+                        # --- C. DIAGNOSTIC LOGIC (The Expanded Brain) ---
+                        def diagnose_patient(row):
+                            diagnoses = []
+                            
+                            # 1. CARDIOVASCULAR & SHOCK
+                            if row['Systolic_BP'] > 180 or row['Diastolic_BP'] > 120: 
+                                diagnoses.append("Hypertensive Crisis")
+                            
+                            if row['MAP'] < 65: 
+                                if row['SIRS_Score'] >= 2: diagnoses.append("Septic Shock")
+                                elif row['Heart_Failure'] == 1: diagnoses.append("Cardiogenic Shock")
+                                elif row['Hx_GI_Bleed'] == 1: diagnoses.append("Hemorrhagic Shock")
+                                else: diagnoses.append("Hypotensive Shock")
+                                
+                            if row['Heart_Rate'] < 50: diagnoses.append("Severe Bradycardia")
+                            elif row['Heart_Rate'] > 140: diagnoses.append("Unstable Tachycardia")
+                            
+                            # 2. RESPIRATORY
+                            if row['O2_Sat'] < 85: diagnoses.append("Critical Hypoxia")
+                            elif row['O2_Sat'] < 90:
+                                if row['Heart_Failure'] == 1: diagnoses.append("Pulmonary Edema")
+                                elif row['Temp_C'] > 38: diagnoses.append("Pneumonia / ARDS")
+                                else: diagnoses.append("Hypoxic Resp Failure")
+                            
+                            if row['Resp_Rate'] > 35: diagnoses.append("Severe Resp Distress")
+                                
+                            # 3. RENAL & METABOLIC
+                            if row['Creatinine'] > 3.0: diagnoses.append("Severe AKI (Stage 3)")
+                            elif row['Creatinine'] > 1.5: diagnoses.append("Acute Kidney Injury")
+                            
+                            if row['Glucose'] < 70: diagnoses.append("Hypoglycemia")
+                            elif row['Glucose'] > 600: diagnoses.append("HHS (Hyperosmolar State)")
+                            elif row['Glucose'] > 250: diagnoses.append("Hyperglycemia / DKA Risk")
+                            
+                            # 4. INFECTION & IMMUNE
+                            if row['WBC'] < 1.5 and row['Temp_C'] > 38: 
+                                diagnoses.append("Neutropenic Sepsis (CRITICAL)")
+                            elif row['WBC'] > 25: 
+                                diagnoses.append("Severe Leukocytosis")
+                            elif row['SIRS_Score'] >= 2 and "Septic Shock" not in diagnoses:
+                                diagnoses.append("Sepsis Protocol Required")
+                                
+                            if row['Temp_C'] < 35: diagnoses.append("Hypothermia")
+                                
+                            # 5. NEURO & LIVER
+                            if row['Altered_Mental'] == 1 and row['Resp_Rate'] < 10:
+                                diagnoses.append("CNS Depression / Overdose Risk")
+                                
+                            if row['Liver_Disease'] == 1 and row['INR'] > 1.7:
+                                diagnoses.append("Liver Decompensation")
+                            elif row['INR'] > 4.0: 
+                                diagnoses.append("Supratherapeutic INR")
+                            
+                            # Final Output
+                            if len(diagnoses) > 0:
+                                return " + ".join(diagnoses)
+                            else:
+                                return "Stable / No Acute Findings"
+
+                        df['Suggested_Diagnosis'] = df.apply(diagnose_patient, axis=1)
                         progress_bar.progress(100)
-                        st.success("Batch Processing Complete!")
+                        
+                        # --- D. DISPLAY & DOWNLOAD ---
+                        st.divider()
+                        st.subheader("📋 AI Diagnostic Report")
+                        
+                        # Style the dataframe based on diagnosis severity
+                        def color_rows(val):
+                            s = str(val)
+                            if 'Shock' in s or 'CRITICAL' in s or 'Crisis' in s: 
+                                return 'background-color: #ffcdd2; color: black; font-weight: bold;' # Red
+                            elif 'Sepsis' in s or 'Failure' in s or 'Severe' in s: 
+                                return 'background-color: #fff9c4; color: black;' # Yellow
+                            elif 'Stable' in s: 
+                                return 'background-color: #c8e6c9; color: black;' # Green
+                            return ''
 
-                        # Display Summary Metrics
-                        m1, m2, m3 = st.columns(3)
-                        m1.metric("Total Patients", len(df))
-                        m2.metric("High Risk Cases", len(df[df['AKI_Risk_Score'] > 30]))
-                        m3.metric("Avg Risk Score", f"{df['AKI_Risk_Score'].mean():.1f}")
-
-                        # Show Result
-                        st.dataframe(df.style.map(
-                            lambda x: 'color: red; font-weight: bold;' if x == '🔴 CRITICAL' else None, 
-                            subset=['Risk_Category']
-                        ))
-
-                        # Download Result
-                        st.download_button(
-                            "📥 Download Analyzed Data",
-                            df.to_csv(index=False),
-                            "analyzed_patients.csv",
-                            "text/csv"
+                        st.dataframe(
+                            df[['Suggested_Diagnosis', 'Age', 'Gender', 'MAP', 'Glucose', 'WBC', 'Bleeding_Risk_%']]
+                            .style.map(color_rows, subset=['Suggested_Diagnosis']),
+                            use_container_width=True
                         )
-
-                    except Exception as e:
-                        st.error(f"Error processing CSV: {e}")
-                        st.info("Check your column names match the Template above!")
+                        
+                        # Summary Metrics
+                        c1, c2, c3, c4 = st.columns(4)
+                        shock_count = len(df[df['Suggested_Diagnosis'].str.contains("Shock")])
+                        sepsis_count = len(df[df['Suggested_Diagnosis'].str.contains("Sepsis")])
+                        htn_count = len(df[df['Suggested_Diagnosis'].str.contains("Crisis")])
+                        
+                        c1.metric("🔴 Shock Cases", shock_count)
+                        c2.metric("🟠 Sepsis Alerts", sepsis_count)
+                        c3.metric("⚠️ Hypertensive Crisis", htn_count)
+                        c4.metric("Avg Bleed Risk", f"{df['Bleeding_Risk_%'].mean():.1f}%")
+                        
+                        # Download
+                        csv_result = df.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            "📥 Download Diagnostic Report",
+                            csv_result,
+                            "diagnostic_report.csv",
+                            "text/csv",
+                            type="primary"
+                        )
+                        
+                except Exception as e:
+                    st.error(f"Error processing CSV: {e}")
+                    st.info("Ensure your CSV matches the template format exactly.")
 
         with tab2:
-            uploaded_image = st.file_uploader("Upload Wound/X-Ray (JPG)", type=["jpg"])
-            if uploaded_image: st.image(uploaded_image, width=300)
-                
+            # Medical Imaging Simulation
+            st.markdown("### 🖼️ AI Medical Imaging (Demo)")
+            st.info("This module simulates a Convolutional Neural Network (CNN) analyzing X-Rays for triage.")
+            
+            uploaded_image = st.file_uploader("Upload X-Ray/Scan (JPG/PNG)", type=["jpg", "png", "jpeg"])
+            
+            if uploaded_image:
+                col_img, col_report = st.columns([1, 1])
+                with col_img:
+                    st.image(uploaded_image, caption="Uploaded Scan", use_container_width=True)
+                with col_report:
+                    if st.button("🔍 Run AI Diagnostic Scan", type="primary"):
+                        import time
+                        with st.status("Initializing Neural Network...", expanded=True) as status:
+                            st.write("Preprocessing image filters...")
+                            time.sleep(1)
+                            st.write("Detecting regions of interest (ROI)...")
+                            time.sleep(1)
+                            st.write("Classifying pathologies...")
+                            time.sleep(1)
+                            status.update(label="Scan Complete", state="complete", expanded=False)
+                        
+                        scenarios = [
+                            {"condition": "Normal", "conf": 98.4, "color": "green", "finding": "Clear lung fields. No acute abnormalities."},
+                            {"condition": "Pneumonia", "conf": 87.2, "color": "red", "finding": "Opacities detected in lower right lobe."},
+                            {"condition": "Pneumothorax", "conf": 92.1, "color": "red", "finding": "Visceral pleural line detected. Airspace expansion."},
+                            {"condition": "Cardiomegaly", "conf": 76.5, "color": "orange", "finding": "Enlarged cardiac silhouette transverse diameter."}
+                        ]
+                        result = np.random.choice(scenarios)
+                        
+                        st.divider()
+                        st.subheader("📋 AI Radiology Report")
+                        if result['color'] == 'green': st.success(f"**Prediction:** {result['condition']}")
+                        elif result['color'] == 'orange': st.warning(f"**Prediction:** {result['condition']}")
+                        else: st.error(f"**Prediction:** {result['condition']}")
+                            
+                        m1, m2 = st.columns(2)
+                        m1.metric("Confidence", f"{result['conf']}%")
+                        m2.metric("Severity Grade", "Low" if result['color']=='green' else "High")
+                        st.markdown(f"**Key Findings:**\n> *{result['finding']}*")
+                        st.markdown("---")
+                        st.caption("🤖 AI Recommendation: Correlate with clinical vitals. Confirm with Radiologist.")
+                        
     # --- MODULE 5: MEDICATION CHECKER ---
     elif menu == "Medication Checker":
         st.subheader("Drug-Drug Interaction Checker")
