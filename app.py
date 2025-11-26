@@ -492,90 +492,109 @@ else:
         else:
             st.info("No patient records found in database yet. Go to 'Risk Calculator' and run an analysis!")
 
-   # --- MODULE 2: LIVE DASHBOARD (IMPROVED) ---
+   # --- MODULE 2: LIVE DASHBOARD (VISUAL OVERHAUL) ---
     elif menu == "Live Dashboard":
-        # 1. Get Data from Session State
+        import altair as alt # Import Altair for better charts
+
+        # 1. Get Data
         data = st.session_state['patient_data']
+        is_critical = data['status'] == 'Critical'
         
-        # Header with Icon
-        st.subheader(f"🖥️ Patient Monitor: {data['id']}")
+        # Header
+        st.subheader(f"🖥️ ICU Monitor: {data['id']}")
         
-        # 2. Top Key Risk Metrics
-        # Swapped 'Age' for 'Sepsis Risk' for a more clinical view
+        # 2. Key Metrics (Styled)
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Bleeding Risk (AI)", f"{data['bleeding_risk']:.1f}%", 
+        m1.metric("Bleeding Risk", f"{data['bleeding_risk']:.1f}%", 
                   "High" if data['bleeding_risk'] > 50 else "Normal", delta_color="inverse")
-        
-        m2.metric("AKI Risk (Rule)", f"{data['aki_risk']}%", 
+        m2.metric("AKI Risk", f"{data['aki_risk']}%", 
                   "Critical" if data['aki_risk'] > 50 else "Normal", delta_color="inverse")
-        
-        # Use .get() just in case the key doesn't exist yet
-        sepsis_val = data.get('sepsis_risk', 0)
-        m3.metric("Sepsis Risk (qSOFA)", f"{sepsis_val}", 
-                  "High" if sepsis_val >= 2 else "Normal", delta_color="inverse")
-        
-        hypo_val = data.get('hypo_risk', 0)
-        m4.metric("Hypoglycemia", "YES" if hypo_val > 0 else "NO", 
-                  "Critical" if hypo_val > 0 else "Normal", delta_color="inverse")
+        m3.metric("Sepsis Score", f"{data.get('sepsis_risk', 0)}", 
+                  "High" if data.get('sepsis_risk', 0) >= 2 else "Normal", delta_color="inverse")
+        m4.metric("Hypoglycemia", "YES" if data.get('hypo_risk', 0) > 0 else "NO", 
+                  "Critical" if data.get('hypo_risk', 0) > 0 else "Normal", delta_color="inverse")
         
         st.divider()
-        
-        # 3. Main Dashboard Layout
-        col_main, col_queue = st.columns([7, 3]) # Adjusted ratio for better look
+
+        # 3. Enhanced Layout
+        col_main, col_queue = st.columns([2.5, 1])
         
         with col_main:
-            st.markdown("### 📈 Vitals Trend (Heart Rate)")
+            st.markdown("### 📉 Live Telemetry (HR vs BP)")
             
-            # Simulate a realistic Heart Rate trend based on status
-            # If critical, base HR is higher with more variance
-            base_hr = 115 if data['status'] == 'Critical' else 72
-            variance = 15 if data['status'] == 'Critical' else 5
+            # GENERATE BETTER LOOKING DATA
+            # We create a dataframe with 10 time points for a smoother curve
+            base_hr = 110 if is_critical else 75
+            base_bp = 90 if is_critical else 120
             
-            chart_data = pd.DataFrame({
-                'Time (Hours Ago)': [-4, -3, -2, -1, 0],
-                'Heart Rate (bpm)': [
-                    base_hr + np.random.randint(-variance, variance),
-                    base_hr + np.random.randint(-variance, variance),
-                    base_hr + np.random.randint(-variance, variance+5),
-                    base_hr + np.random.randint(-variance, variance),
-                    base_hr  # Current presumed value
-                ]
-            })
+            # Generate random variations
+            time_points = list(range(-9, 1)) # -9 hours to Now (0)
+            hr_data = [base_hr + np.random.randint(-10, 15) for _ in range(10)]
+            bp_data = [base_bp + np.random.randint(-5, 10) for _ in range(10)]
             
-            # Area chart with dynamic color based on status
-            chart_color = "#ff4b4b" if data['status'] == 'Critical' else "#2ecc71"
-            st.area_chart(chart_data.set_index('Time (Hours Ago)'), color=chart_color, height=300)
+            chart_df = pd.DataFrame({
+                'Time': time_points,
+                'Heart Rate': hr_data,
+                'Systolic BP': bp_data
+            }).melt('Time', var_name='Metric', value_name='Value')
+
+            # DEFINE CUSTOM COLORS
+            # Neon Red for BP, Cyan for Heart Rate
+            domain = ['Heart Rate', 'Systolic BP']
+            range_ = ['#00E5FF', '#FF1744'] # Cyan and Neon Red
+
+            # ALTAIR CHART (Professional Medical Look)
+            c = alt.Chart(chart_df).mark_line(
+                interpolate='monotone', # Makes the line smooth/curved
+                point=True,
+                strokeWidth=3
+            ).encode(
+                x=alt.X('Time', axis=alt.Axis(title='Time (Hours)', grid=False)),
+                y=alt.Y('Value', axis=alt.Axis(title='Value', grid=True), scale=alt.Scale(domain=[40, 180])),
+                color=alt.Color('Metric', scale=alt.Scale(domain=domain, range=range_), legend=alt.Legend(title="Vitals")),
+                tooltip=['Time', 'Metric', 'Value']
+            ).properties(
+                height=350
+            ).configure_axis(
+                gridColor='#333333' # Dark grid lines for contrast
+            ).configure_view(
+                strokeWidth=0 # Remove border
+            )
             
-            # 4. Dynamic Alert Section
-            st.markdown("### 🔔 Clinical Alerts")
-            if data['status'] == 'Critical':
-                st.error("🚨 **CRITICAL PATIENT STATUS**\n\nImmediate assessment required. Multiple risk factors exceed critical thresholds. Review 'Risk Calculator' for specific causes (e.g., Sepsis, Hemorrhage).")
-            elif data['aki_risk'] > 30 or data['bleeding_risk'] > 30 or sepsis_val >= 1:
-                st.warning("⚠️ **Elevated Risk Warning**\n\nPatient has one or more elevated risk scores. Closer monitoring is advised.")
+            st.altair_chart(c, use_container_width=True)
+            
+            # Dynamic Alert Box
+            if is_critical:
+                st.error("🚨 **CRITICAL ALERT:** Vitals unstable. Check Sepsis & Bleeding protocols immediately.")
             else:
-                st.success("✅ **Patient Stable**\n\nAll monitored risks are currently within normal limits.")
+                st.success("✅ **STABLE:** Vitals are trending within normal limits.")
 
         with col_queue:
-            st.markdown("### 📋 Unit Watch List")
+            st.markdown("### 🏥 Unit Status")
             
-            # Dynamic Current Patient Card
-            # Uses HTML for custom styling to make it pop
-            card_color = "#ffebee" if data['status'] == 'Critical' else "#e8f5e9"
-            border_color = "#c62828" if data['status'] == 'Critical' else "#2e7d32"
+            # Improved Card Styling with new colors
+            # Status Color: Green (Safe) vs Red (Critical)
+            status_color = "#FF5252" if is_critical else "#69F0AE"
+            bg_color = "rgba(255, 82, 82, 0.1)" if is_critical else "rgba(105, 240, 174, 0.1)"
+            
             st.markdown(f"""
-            <div style="background-color: {card_color}; padding: 15px; border-radius: 8px; border-left: 6px solid {border_color}; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <h4 style="margin:0; color: {border_color};">🛏️ {data['id']} (SELECTED)</h4>
-                <p style="margin: 5px 0 0 0; font-size: 1.1em;">
-                    Status: <strong>{data['status']}</strong>
+            <div style="
+                background-color: {bg_color}; 
+                border: 2px solid {status_color}; 
+                border-radius: 10px; 
+                padding: 15px; 
+                margin-bottom: 20px;">
+                <h3 style="color: {status_color}; margin:0;">{data['id']}</h3>
+                <p style="margin: 5px 0 0 0; font-size: 1.1em; color: white;">
+                    Status: <strong>{data['status'].upper()}</strong>
                 </p>
             </div>
             """, unsafe_allow_html=True)
             
-            # Static Examples (Placeholders for future SQL integration)
-            st.info("**🛏️ Bed 410**\n\n🟠 AKI Warning (Cr 1.8)")
-            st.error("**🛏️ Bed 105**\n\n🔴 Sepsis Alert (Lactate 4.1)")
-            st.caption("View 'Patient History' for full unit list.")
-    # --- MODULE 3: BATCH ANALYSIS (CSV) ---
+            st.caption("Active Alerts in Unit:")
+            st.warning("🛏️ Bed 202: High Risk (Fall)")
+            st.error("🛏️ Bed 410: Sepsis Alert")
+            st.info("🛏️ Bed 105: Pending Labs")    # --- MODULE 3: BATCH ANALYSIS (CSV) ---
     elif menu == "Batch Analysis (CSV)":
         st.subheader("Bulk Patient Processing")
         
