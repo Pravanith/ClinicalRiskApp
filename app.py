@@ -139,36 +139,100 @@ def calculate_hypoglycemic_risk(insulin, renal, hba1c_high, recent_dka):
     score += 20 if hba1c_high else 0
     score += 20 if recent_dka else 0 
     return min(score, 100)
-# D. Interaction Database
+# D. Interaction Database (MAXIMUM VERSION)
 interaction_db = {
-    ("sildenafil", "nitroglycerin"): "CRITICAL: Fatal hypotension. Contraindicated.",
-    ("tadalafil", "isosorbide mononitrate"): "CRITICAL: Fatal hypotension. Contraindicated.",
-    ("methotrexate", "trimethoprim"): "CRITICAL: Bone marrow toxicity. Avoid.",
-    ("sertraline", "linezolid"): "CRITICAL: Fatal Serotonin Syndrome risk.",
-    ("fentanyl", "midazolam"): "CRITICAL: Severe respiratory depression.",
-    ("spironolactone", "trimethoprim"): "CRITICAL: High risk of sudden death from Hyperkalemia.",
-    ("warfarin", "amiodarone"): "MAJOR: Amiodarone increases INR significantly. Reduce Warfarin dose.",
-    ("warfarin", "ibuprofen"): "MAJOR: NSAIDs increase bleeding risk and damage gastric mucosa.",
-    ("lisinopril", "spironolactone"): "MAJOR: Risk of severe hyperkalemia (high potassium).",
-    ("simvastatin", "amiodarone"): "MAJOR: Rhabdomyolysis risk. Simvastatin dose limit 20mg.",
-    ("ciprofloxacin", "ondansetron"): "MAJOR: QT Prolongation risk. Monitor ECG.",
-    ("levofloxacin", "ondansetron"): "MAJOR: QT Prolongation risk. Monitor ECG.",
-    ("citalopram", "fluconazole"): "MAJOR: QT Prolongation risk. Avoid high doses.",
-    ("warfarin", "ciprofloxacin"): "MAJOR: Antibiotics kill gut flora, spiking INR.",
-    ("warfarin", "fluconazole"): "MAJOR: Fluconazole inhibits CYP2C9, dramatically raising INR.",
-    ("clopidogrel", "omeprazole"): "MAJOR: Omeprazole blocks CYP2C19, making Plavix ineffective.",
-    ("tramadol", "fluoxetine"): "MAJOR: Risk of Serotonin Syndrome and Seizures.",
-    ("lithium", "lisinopril"): "MAJOR: ACE Inhibitors reduce Lithium excretion -> Lithium Toxicity.",
-    ("lithium", "ibuprofen"): "MAJOR: NSAIDs reduce Lithium excretion -> Lithium Toxicity.",
-    ("digoxin", "clarithromycin"): "MAJOR: Macrolides block P-gp -> Digoxin Toxicity.",
-    ("phenytoin", "oral contraceptives"): "MAJOR: Phenytoin induces enzymes, causing contraceptive failure.",
-    ("apixaban", "ibuprofen"): "MODERATE: NSAIDs increase bleeding risk with Apixaban.",
-    ("clopidogrel", "aspirin"): "MODERATE: Dual antiplatelet therapy, increases bleed risk.",
-    ("warfarin", "acetaminophen"): "MODERATE: High/Chronic Tylenol use can elevate INR.",
-    ("levothyroxine", "calcium"): "MODERATE: Calcium blocks Thyroid absorption. Separate by 4 hours.",
-    ("doxycycline", "iron"): "MODERATE: Iron binds to antibiotic, causing treatment failure.",
-}
+    # -----------------------------------------------------------
+    # 🔴 CRITICAL / FATAL (Contraindicated)
+    # -----------------------------------------------------------
+    ("sildenafil", "nitroglycerin"): "CRITICAL: Severe hypotension and cardiovascular collapse. Contraindicated.",
+    ("tadalafil", "nitroglycerin"): "CRITICAL: Severe hypotension. Contraindicated.",
+    ("sildenafil", "isosorbide mononitrate"): "CRITICAL: Severe hypotension. Contraindicated.",
+    ("methotrexate", "trimethoprim"): "CRITICAL: Fatal bone marrow suppression & pancytopenia. Avoid.",
+    ("methotrexate", "bactrim"): "CRITICAL: Fatal bone marrow suppression. Avoid.",
+    ("methotrexate", "ibuprofen"): "CRITICAL: NSAIDs block Methotrexate excretion. Risk of Kidney Failure & Toxicity.",
+    ("methotrexate", "naproxen"): "CRITICAL: NSAIDs block Methotrexate excretion. Risk of Toxicity.",
+    ("sertraline", "linezolid"): "CRITICAL: Fatal Serotonin Syndrome risk (Linezolid is an MAOI).",
+    ("fluoxetine", "linezolid"): "CRITICAL: Fatal Serotonin Syndrome risk.",
+    ("citalopram", "linezolid"): "CRITICAL: Fatal Serotonin Syndrome risk.",
+    ("spironolactone", "trimethoprim"): "CRITICAL: Risk of sudden cardiac death from severe Hyperkalemia.",
+    ("spironolactone", "bactrim"): "CRITICAL: Risk of sudden cardiac death from severe Hyperkalemia.",
+    ("fentanyl", "benzodiazepine"): "CRITICAL: Profound respiratory depression, coma, and death.",
+    ("oxycodone", "alcohol"): "CRITICAL: Respiratory depression and fatal overdose risk.",
+    ("tramadol", "alcohol"): "CRITICAL: Seizure threshold lowered + Respiratory depression.",
+    ("clarithromycin", "simvastatin"): "CRITICAL: Severe Rhabdomyolysis and kidney failure (CYP3A4 inhibition).",
+    ("erythromycin", "simvastatin"): "CRITICAL: Severe Rhabdomyolysis and kidney failure.",
+    ("ciprofloxacin", "tizanidine"): "CRITICAL: Severe hypotension and sedation.",
 
+    # -----------------------------------------------------------
+    # 🟠 MAJOR (Serious - Requires Monitoring)
+    # -----------------------------------------------------------
+    # CARDIAC & ANTICOAGULANTS
+    ("warfarin", "amiodarone"): "MAJOR: Amiodarone inhibits Warfarin metabolism. INR can double. Reduce Warfarin 50%.",
+    ("warfarin", "ciprofloxacin"): "MAJOR: Antibiotics kill gut flora, spiking INR. High bleed risk.",
+    ("warfarin", "bactrim"): "MAJOR: Significant increase in INR. High bleed risk.",
+    ("warfarin", "erythromycin"): "MAJOR: Increases Warfarin levels. Monitor INR closely.",
+    ("warfarin", "clarithromycin"): "MAJOR: Increases Warfarin levels. Monitor INR.",
+    ("warfarin", "fluconazole"): "MAJOR: Dramatically increases INR. Bleed risk.",
+    ("warfarin", "metronidazole"): "MAJOR: Dramatically increases INR. Bleed risk.",
+    ("warfarin", "aspirin"): "MAJOR: Significantly increased bleeding risk (Antiplatelet + Anticoagulant).",
+    ("warfarin", "ibuprofen"): "MAJOR: Gastrointestinal bleeding risk. NSAIDs damage stomach lining.",
+    ("digoxin", "amiodarone"): "MAJOR: Amiodarone doubles Digoxin levels. Risk of toxicity (Halo vision, Nausea).",
+    ("digoxin", "clarithromycin"): "MAJOR: Macrolides block P-gp, leading to Digoxin toxicity.",
+    ("digoxin", "erythromycin"): "MAJOR: Macrolides block P-gp, leading to Digoxin toxicity.",
+    ("digoxin", "spironolactone"): "MAJOR: Spironolactone reduces Digoxin clearance. Monitor levels.",
+    ("clopidogrel", "omeprazole"): "MAJOR: Omeprazole blocks CYP2C19, making Plavix ineffective (Stent thrombosis risk).",
+    ("sildenafil", "erythromycin"): "MAJOR: Erythromycin increases Sildenafil levels. Risk of hypotension.",
+    ("sildenafil", "clarithromycin"): "MAJOR: Clarithromycin increases Sildenafil levels. Risk of hypotension.",
+    
+    # KIDNEY & BP
+    ("lisinopril", "ibuprofen"): "MAJOR: NSAIDs reduce efficacy of ACEi and cause Acute Kidney Injury.",
+    ("lisinopril", "spironolactone"): "MAJOR: High risk of Hyperkalemia. Monitor Potassium.",
+    ("lisinopril", "potassium"): "MAJOR: Risk of Hyperkalemia. Avoid supplements.",
+    ("lisinopril", "lithium"): "MAJOR: ACEi reduces Lithium excretion -> Lithium Toxicity.",
+    ("furosemide", "ibuprofen"): "MAJOR: NSAIDs block diuretic effect and hurt kidneys.",
+    
+    # PSYCH & NEURO (Serotonin & QT)
+    ("tramadol", "sertraline"): "MAJOR: Serotonin Syndrome risk (Seizures, Agitation, Hyperthermia).",
+    ("tramadol", "fluoxetine"): "MAJOR: Serotonin Syndrome risk.",
+    ("tramadol", "citalopram"): "MAJOR: Serotonin Syndrome risk + Seizure risk.",
+    ("citalopram", "ondansetron"): "MAJOR: QT Prolongation. Risk of Torsades de Pointes arrhythmia.",
+    ("citalopram", "ciprofloxacin"): "MAJOR: QT Prolongation. Risk of Torsades de Pointes.",
+    ("citalopram", "erythromycin"): "MAJOR: QT Prolongation. Risk of Torsades de Pointes.",
+    ("citalopram", "clarithromycin"): "MAJOR: QT Prolongation. Risk of Torsades de Pointes.",
+    ("fluoxetine", "ondansetron"): "MAJOR: QT Prolongation risk.",
+    ("lithium", "ibuprofen"): "MAJOR: NSAIDs reduce Lithium excretion -> Lithium Toxicity (Tremors, Confusion).",
+    ("lithium", "hydrochlorothiazide"): "MAJOR: Thiazides reduce Lithium excretion -> Lithium Toxicity.",
+    
+    # ANTIBIOTICS
+    ("ciprofloxacin", "theophylline"): "MAJOR: Cipro increases Theophylline levels (Seizures).",
+    ("ciprofloxacin", "prednisone"): "MAJOR: Increased risk of tendon rupture (Achilles), especially in elderly.",
+    ("levofloxacin", "prednisone"): "MAJOR: Increased risk of tendon rupture.",
+    ("doxycycline", "calcium"): "MAJOR: Calcium binds to antibiotic, preventing absorption.",
+    ("ciprofloxacin", "calcium"): "MAJOR: Calcium binds to antibiotic, preventing absorption.",
+    
+    # -----------------------------------------------------------
+    # 🍷 LIFESTYLE & FOOD (New!)
+    # -----------------------------------------------------------
+    ("simvastatin", "grapefruit"): "MAJOR: Grapefruit inhibits CYP3A4. Risk of Rhabdomyolysis.",
+    ("atorvastatin", "grapefruit"): "MODERATE: Grapefruit increases levels. Use caution.",
+    ("warfarin", "alcohol"): "MAJOR: Acute alcohol intake increases bleed risk. Chronic intake decreases Warfarin effect.",
+    ("metronidazole", "alcohol"): "MAJOR: Disulfiram-like reaction (Severe vomiting). Avoid alcohol for 72h.",
+    ("oxycodone", "grapefruit"): "MODERATE: Grapefruit may increase Opioid levels (Sedation).",
+    
+    # -----------------------------------------------------------
+    # 🟡 MODERATE (Monitor)
+    # -----------------------------------------------------------
+    ("apixaban", "ibuprofen"): "MODERATE: Increased bleeding risk.",
+    ("rivaroxaban", "ibuprofen"): "MODERATE: Increased bleeding risk.",
+    ("aspirin", "ibuprofen"): "MODERATE: Ibuprofen blocks Aspirin's heart-protective effect if taken together.",
+    ("sertraline", "ibuprofen"): "MODERATE: SSRIs + NSAIDs increase GI bleed risk.",
+    ("fluoxetine", "ibuprofen"): "MODERATE: SSRIs + NSAIDs increase GI bleed risk.",
+    ("citalopram", "ibuprofen"): "MODERATE: SSRIs + NSAIDs increase GI bleed risk.",
+    ("metoprolol", "amiodarone"): "MODERATE: Risk of severe Bradycardia (slow heart rate).",
+    ("levothyroxine", "calcium"): "MODERATE: Calcium blocks thyroid absorption. Separate by 4 hours.",
+    ("levothyroxine", "iron"): "MODERATE: Iron blocks thyroid absorption. Separate by 4 hours.",
+    ("allopurinol", "amoxicillin"): "MODERATE: High risk of skin rash.",
+}
 def check_interaction(d1, d2):
     d1, d2 = d1.lower().strip(), d2.lower().strip()
     if (d1, d2) in interaction_db: return interaction_db[(d1, d2)]
