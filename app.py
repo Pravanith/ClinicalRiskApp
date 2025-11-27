@@ -175,12 +175,15 @@ def check_interaction(d1, d2):
     if (d2, d1) in interaction_db: return interaction_db[(d2, d1)]
     return "✅ No high-alert interaction found."
 
-# E. Chatbot Logic (The "Ultimate Health Encyclopedia")
+# E. Chatbot Logic (Fixed: Whole Word Matching)
 def chatbot_response(text):
-    text = text.lower()
+    import re  # Import Regex for smart matching
     
-    # 1. SMART TRANSLATOR (Maps slang to medical terms)
+    text = text.lower().strip()
+    
+    # 1. SMART TRANSLATOR (Maps slang/typos to medical terms)
     synonyms = {
+        "type1": "type 1", "type2": "type 2", # Fixes "diabetes type1" typo
         "high bp": "hypertension", "high blood pressure": "hypertension",
         "low bp": "hypotension", "low blood pressure": "hypotension",
         "heart failure": "chf", "kidney failure": "ckd", "kidney injury": "aki",
@@ -191,14 +194,14 @@ def chatbot_response(text):
         "heart attack": "mi", "stroke": "cva"
     }
     
+    # Replace synonyms
     for slang, term in synonyms.items():
-        if slang in text: text = text.replace(slang, term)
+        if slang in text:
+            text = text.replace(slang, term)
     
-    # 2. KNOWLEDGE BASE (250+ Topics)
+    # 2. KNOWLEDGE BASE (The Database)
     knowledge_base = {
-        # ------------------------------------------------------
-        # 1. CARDIOLOGY (Heart)
-        # ------------------------------------------------------
+        # --- CARDIOLOGY ---
         "mi": "Myocardial Infarction (Heart Attack). Blockage of blood flow. STEMI is critical. Symptoms: Chest pressure, radiating pain.",
         "heart attack": "Myocardial Infarction (MI). Emergency. Protocol: MONA (Morphine, O2, Nitro, Aspirin).",
         "hypertension": "High Blood Pressure (>130/80). 'The Silent Killer'. Risk of Stroke/MI/Kidney Failure.",
@@ -216,9 +219,7 @@ def chatbot_response(text):
         "vtach": "Ventricular Tachycardia. Life-threatening. Pulse? Cardiovert. No pulse? Defibrillate.",
         "vfib": "Ventricular Fibrillation. Cardiac Arrest. No pulse. CPR + Defibrillation immediately.",
 
-        # ------------------------------------------------------
-        # 2. RESPIRATORY (Lungs)
-        # ------------------------------------------------------
+        # --- RESPIRATORY ---
         "asthma": "Airway inflammation. Wheezing. Rescue: Albuterol. Maintenance: Steroids.",
         "copd": "Chronic Obstructive Pulmonary Disease. Air trapping. Smokers. Risk of CO2 retention.",
         "pneumonia": "Lung infection. Fever, cough, consolidation on X-Ray. Antibiotics needed.",
@@ -232,9 +233,7 @@ def chatbot_response(text):
         "croup": "Pediatric viral infection. 'Barking seal' cough. Steeple sign on X-ray.",
         "rsv": "Respiratory Syncytial Virus. Bronchiolitis in kids. Watch for hypoxia.",
 
-        # ------------------------------------------------------
-        # 3. NEUROLOGY (Brain)
-        # ------------------------------------------------------
+        # --- NEUROLOGY ---
         "cva": "Cerebrovascular Accident (Stroke). Ischemic vs Hemorrhagic. Time is Brain.",
         "stroke": "Brain attack. BE-FAST: Balance, Eyes, Face, Arms, Speech, Time. CT Head stat.",
         "tia": "Transient Ischemic Attack. Warning stroke. Symptoms resolve <24h. High risk of future stroke.",
@@ -250,9 +249,7 @@ def chatbot_response(text):
         "als": "Lou Gehrig's Disease. Motor neuron death. Paralysis. Sensation intact.",
         "guillain-barre": "Ascending paralysis after infection. Watch breathing.",
 
-        # ------------------------------------------------------
-        # 4. GASTROINTESTINAL (Gut)
-        # ------------------------------------------------------
+        # --- GASTROINTESTINAL ---
         "gerd": "Acid Reflux. Heartburn. Risk of esophageal damage. PPIs (Omeprazole).",
         "pud": "Peptic Ulcer Disease. Stomach ulcers. Pain with food. H. Pylori or NSAIDs.",
         "gi bleed": "Upper (Vomit blood) vs Lower (Bloody stool). Monitor Hemoglobin.",
@@ -267,9 +264,7 @@ def chatbot_response(text):
         "c diff": "Antibiotic diarrhea. Contagious spores. Soap & Water wash only.",
         "bowel obstruction": "Blockage. Constipation, vomiting, distension. NPO + NG Tube.",
 
-        # ------------------------------------------------------
-        # 5. RENAL & UROLOGY (Kidney)
-        # ------------------------------------------------------
+        # --- RENAL ---
         "aki": "Acute Kidney Injury. Creatinine spike. Causes: Dehydration, Contrast, NSAIDs.",
         "ckd": "Chronic Kidney Disease. GFR < 60 > 3 months. Diabetes/HTN causes.",
         "esrd": "End Stage Renal Disease. Needs Dialysis or Transplant.",
@@ -278,11 +273,11 @@ def chatbot_response(text):
         "bph": "Enlarged prostate. Dribbling, frequency in older men.",
         "rhabdo": "Muscle breakdown. Clogs kidneys. Tea-colored urine. Fluids.",
 
-        # ------------------------------------------------------
-        # 6. ENDOCRINE (Hormones)
-        # ------------------------------------------------------
-        "diabetes type1": "Autoimmune. No insulin. DKA risk. Insulin dependent.",
-        "diabetes type2": "Insulin resistance. Lifestyle + Metformin.",
+        # --- ENDOCRINE ---
+        "diabetes": "Metabolic disease. High sugar. Causes damage to eyes, kidneys, nerves.",
+        "diabetes type 1": "Autoimmune. No insulin. DKA risk. Insulin dependent.",
+        "diabetes type 2": "Insulin resistance. Lifestyle + Metformin.",
+        "prediabetes": "A1C 5.7-6.4%. Warning sign. Reversible.",
         "dka": "Diabetic Ketoacidosis. Acidosis + Ketones. ICU care.",
         "hhs": "Hyperosmolar Hyperglycemic State. Glucose > 600. Dehydration.",
         "hypoglycemia": "Low Sugar (<70). Sweating, confusion. Glucose needed.",
@@ -290,15 +285,8 @@ def chatbot_response(text):
         "hyperthyroidism": "High Thyroid. Weight loss, heat intolerance, fast HR.",
         "addison": "Adrenal insufficiency. Low cortisol. Bronze skin, hypotension.",
         "cushing": "High cortisol. Moon face, buffalo hump, high sugar.",
-        "diabetes": "Chronic condition affecting how the body processes blood sugar (glucose). High sugar damages vessels/nerves.",
-        "prediabetes": "Elevated blood sugar (A1c 5.7-6.4%). Warning sign before Type 2 Diabetes. Reversible with lifestyle changes.",
-        "gestational diabetes": "High blood sugar during pregnancy. Risks: Large baby (Macrosomia). Usually resolves after birth.",
-        "neuropathy": "Nerve damage often caused by Diabetes. Symptoms: Numbness, tingling, burning pain in feet/hands.",
-        "retinopathy": "Eye damage caused by Diabetes. Leading cause of blindness. Needs annual eye exam.",
-        
-        # ------------------------------------------------------
-        # 7. INFECTIOUS DISEASE
-        # ------------------------------------------------------
+
+        # --- INFECTIOUS DISEASE ---
         "sepsis": "Infection + Organ Failure. qSOFA criteria. Antibiotics ASAP.",
         "septic shock": "Sepsis + Hypotension requiring pressors.",
         "flu": "Influenza. Sudden fever, aches. Tamiflu < 48h.",
@@ -308,21 +296,10 @@ def chatbot_response(text):
         "cellulitis": "Skin infection. Red, hot, spreading.",
         "abscess": "Pus pocket. Needs drainage (I&D).",
         "osteomyelitis": "Bone infection. Long-term IV antibiotics.",
-        
-        # ------------------------------------------------------
-        # 8.FEVER & INFLAMMATION (Add these) ---
-        # ------------------------------------------------------
-        "fever": "Pyrexia. Temp > 100.4°F (38.0°C). A sign of inflammation or infection. Treat with Tylenol/Motrin.",
-        "low grade fever": "Mild elevation (99.5°F - 100.3°F). Often viral or inflammatory. Monitor.",
-        "high grade fever": "Temp > 103°F (39.4°C). concerning for bacterial infection. Seek care if persistent.",
-        "hyperpyrexia": "Extreme fever > 106.7°F (41.5°C). Medical emergency. Risk of brain damage/seizures.",
-        "neutropenic fever": "Fever in a chemo patient with low WBC. ONCOLOGIC EMERGENCY. Needs IV Antibiotics within 1 hour.",
-        "chills": "Rigors. Shivering sensation often accompanying a fever spike. Sign of bacteremia (bacteria in blood).",
-        "night sweats": "Drenching sweats at sleep. Red flag for TB, Lymphoma, or Menopause.",
-        
-        # ------------------------------------------------------
-        # 9. HEMATOLOGY (Blood)
-        # ------------------------------------------------------
+        "fever": "Temp > 100.4F (38C). Sign of inflammation.",
+        "neutropenic fever": "Fever in chemo patient. ONCOLOGIC EMERGENCY.",
+
+        # --- HEMATOLOGY ---
         "anemia": "Low Hemoglobin. Fatigue, pallor. Iron deficiency common.",
         "sickle cell": "Genetic. Pain crises. RBCs shape sickle. Fluids/Pain meds.",
         "thrombocytopenia": "Low platelets. Bleeding risk.",
@@ -331,18 +308,15 @@ def chatbot_response(text):
         "neutropenia": "Low neutrophils. Severe infection risk. Fever is emergency.",
         "dvt": "Deep Vein Thrombosis. Leg clot.",
 
-        # ------------------------------------------------------
-        # 10. MUSCULOSKELETAL
-        # ------------------------------------------------------
+        # --- MUSCULOSKELETAL ---
         "osteoarthritis": "Wear-and-tear. Joint pain. Worse with use.",
         "rheumatoid arthritis": "Autoimmune. Morning stiffness > 30 mins.",
         "gout": "Uric acid crystals. Big toe pain. Colchicine/Allopurinol.",
         "osteoporosis": "Weak bones. Fracture risk.",
         "compartment syndrome": "Muscle pressure. Pain out of proportion. Emergency surgery.",
+        "rhabdomyolysis": "Muscle breakdown releasing myoglobin. Kidney damage. Tea-colored urine.",
 
-        # ------------------------------------------------------
-        # 11. MEDICATIONS (Pharmacology)
-        # ------------------------------------------------------
+        # --- MEDICATIONS ---
         "lisinopril": "ACE Inhibitor (BP). Side effects: Cough, High K+.",
         "amlodipine": "Calcium Channel Blocker (BP). Side effect: Leg swelling.",
         "metoprolol": "Beta-blocker. Lowers HR and BP.",
@@ -378,16 +352,14 @@ def chatbot_response(text):
         "diphenhydramine": "Benadryl. Allergy. Sedating.",
         "epinephrine": "Adrenaline. Anaphylaxis/Code Blue.",
 
-        # ------------------------------------------------------
-        # 12. LABS & VITALS
-        # ------------------------------------------------------
-        "wbc": "White Blood Cells (4.5-11k). High=Infection.",
-        "hgb": "Hemoglobin (12-16). Low=Anemia. <7 Transfuse.",
-        "plt": "Platelets (150-450k). Low=Bleeding risk.",
-        "na": "Sodium (135-145). Low=Confusion.",
-        "k": "Potassium (3.5-5.0). Critical for heart rhythm.",
-        "bun": "BUN (7-20). High=Dehydration/Kidney.",
-        "cr": "Creatinine (0.6-1.2). Kidney function.",
+        # --- LABS ---
+        "wbc": "White Blood Cells. High=Infection.",
+        "hgb": "Hemoglobin. Low=Anemia. <7 Transfuse.",
+        "plt": "Platelets. Low=Bleeding risk.",
+        "na": "Sodium. Low=Confusion.",
+        "k": "Potassium. Critical for heart rhythm.",
+        "bun": "BUN. High=Dehydration/Kidney.",
+        "cr": "Creatinine. Best kidney marker.",
         "glucose": "Blood Sugar. 70-100 Fasting.",
         "a1c": "HbA1c. 3-month sugar avg. <5.7 Normal. >6.5 Diabetes.",
         "trop": "Troponin. Heart enzyme. High=Heart Attack.",
@@ -396,13 +368,11 @@ def chatbot_response(text):
         "lactate": "Sepsis marker. >2.0 indicates shock.",
         "ph": "Acidity (7.35-7.45).",
 
-        # ------------------------------------------------------
-        # 13. ABBREVIATIONS
-        # ------------------------------------------------------
+        # --- ABBREVIATIONS ---
         "bid": "Twice a day.",
         "tid": "Three times a day.",
         "qid": "Four times a day.",
-        "qd": "Daily (Once a day).",
+        "qd": "Daily.",
         "prn": "As needed.",
         "ac": "Before meals.",
         "pc": "After meals.",
@@ -415,10 +385,15 @@ def chatbot_response(text):
         "nkda": "No Known Drug Allergies."
     }
     
-    # Search Logic (Keyword Matching)
-    for key, response in knowledge_base.items():
-        if key in text:
-            return f"**{key.upper()}**: {response}"
+    # 3. SEARCH LOGIC (WHOLE WORD + LONGEST MATCH)
+    # We sort keys by length so "diabetes type 1" matches before "diabetes"
+    sorted_keys = sorted(knowledge_base.keys(), key=len, reverse=True)
+    
+    for key in sorted_keys:
+        # Use regex to find the keyword as a whole word only
+        # This prevents "pe" from matching inside "type"
+        if re.search(r'\b' + re.escape(key) + r'\b', text):
+            return f"**{key.upper()}**: {knowledge_base[key]}"
             
     return "ℹ️ I didn't recognize that term. Try specific medical terms like 'Sepsis', 'Warfarin', 'INR', or 'Stroke'."
 # ---------------------------------------------------------
