@@ -500,12 +500,13 @@ else:
         ])
         st.info("v2.6 - Zero-Base Inputs")
     
-    # --- MODULE 1: RISK CALCULATOR ---
+    # --- MODULE 1: RISK CALCULATOR (FIXED LOGIC) ---
     if menu == "Risk Calculator":
         st.subheader("Acute Risk Calculator (Advanced)")
         st.caption("Enter patient values below. Default is 0.")
         
         with st.form("risk_form"):
+            # 1. Patient Demographics
             st.markdown("#### 1. Patient Demographics")
             c1, c2, c3, c4 = st.columns(4)
             age = c1.number_input("Age", min_value=0, max_value=120, value=0)
@@ -522,14 +523,17 @@ else:
             smoking = p2.selectbox("Smoking Status", ["Never", "Former", "Current"])
             admit_type = p3.selectbox("Admission Type", ["Emergency", "Elective", "Trauma"])
 
-            # BMI Preview (Visual Only)
-            weight_kg_preview = weight_input * 0.453592 if weight_scale == "lbs" else weight_input
+            # Logic: Weight Conversion
+            weight_kg = weight_input * 0.453592 if weight_scale == "lbs" else weight_input
+            
             if height > 0:
-                bmi_preview = weight_kg_preview / ((height/100)**2)
-                p1.caption(f"Calculated BMI: {bmi_preview:.1f}")
+                bmi = weight_kg / ((height/100)**2)
+                p1.caption(f"Calculated BMI: {bmi:.1f}")
             else:
+                bmi = 0.0
                 p1.caption("Enter Height for BMI")
 
+            # 2. Vital Signs
             st.markdown("#### 2. Vital Signs & Observations")
             v1, v2, v3, v4 = st.columns(4)
             sys_bp = v1.number_input("Systolic BP (mmHg)", min_value=0, max_value=300, value=0)
@@ -547,6 +551,7 @@ else:
             glucose = v7.number_input("Fingerstick Glucose (mg/dL)", min_value=0, max_value=600, value=0)
             pain = v8.slider("Pain Score (VAS)", 0, 10, 0)
 
+            # 3. Lab Values
             st.markdown("#### 3. Laboratory Values")
             l1, l2, l3, l4 = st.columns(4)
             creat = l1.number_input("Creatinine (mg/dL)", min_value=0.0, max_value=20.0, value=0.0)
@@ -560,6 +565,7 @@ else:
             platelets = l7.number_input("Platelets (10^9/L)", min_value=0, max_value=1000, value=0)
             lactate = l8.number_input("Lactate (mmol/L)", min_value=0.0, max_value=20.0, value=0.0)
 
+            # 4. Medications & Comorbidities
             st.markdown("#### 4. Comorbidities & Medications")
             m1, m2, m3, m4 = st.columns(4)
             anticoag = m1.checkbox("Anticoagulant (Blood Thinner)")
@@ -581,37 +587,40 @@ else:
             submitted = st.form_submit_button("Run Clinical Analysis", type="primary")
 
             if submitted:
-                # 1. UNIT CONVERSIONS (Logic Fix)
-                if temp_scale == "°F": final_temp_c = (temp_input - 32) * 5/9
-                else: final_temp_c = temp_input
-
-                if weight_scale == "lbs": weight_kg = weight_input * 0.453592
-                else: weight_kg = weight_input
-
-                # BMI Calculation (Safe Mode)
-                if height > 0:
-                    bmi = weight_kg / ((height/100)**2)
+                # --- A. PRE-PROCESSING ---
+                if temp_scale == "°F": 
+                    final_temp_c = (temp_input - 32) * 5/9 
+                else: 
+                    final_temp_c = temp_input
+                
+                # Fix: Handle 0 BP
+                if sys_bp > 0:
+                    map_val = (sys_bp + (2 * dia_bp)) / 3 
                 else:
-                    bmi = 0.0 # Default if height not entered
+                    map_val = 0
 
-                map_val = (sys_bp + (2 * dia_bp)) / 3 if sys_bp > 0 else 0
-
-                # 2. AI PREDICTION
+                # --- B. RISK CALCULATIONS ---
+                
+                # 1. AI Bleeding Prediction
                 is_high_bp = 1 if sys_bp > 140 else 0
                 input_df = pd.DataFrame({
-                    'age': [age], 'inr': [inr], 'anticoagulant': [1 if anticoag else 0],
-                    'gi_bleed': [1 if gi_bleed else 0], 'high_bp': [is_high_bp],
-                    'antiplatelet': [0], 'gender_female': [1 if gender == "Female" else 0],
-                    'weight': [weight_kg], 'liver_disease': [1 if liver_disease else 0]
+                    'age': [age], 'inr': [inr], 
+                    'anticoagulant': [1 if anticoag else 0],
+                    'gi_bleed': [1 if gi_bleed else 0], 
+                    'high_bp': [is_high_bp],
+                    'antiplatelet': [0], 
+                    'gender_female': [1 if gender == "Female" else 0],
+                    'weight': [weight_kg], 
+                    'liver_disease': [1 if liver_disease else 0]
                 })
                 pred_bleeding = bleeding_model.predict(input_df)[0]
                 
-                # 3. RULE PREDICTIONS
+                # 2. Rule Predictions
                 pred_aki = calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
                 pred_sepsis = calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
                 pred_hypo = calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
 
-                # 4. SCORES
+                # 3. HAS-BLED Score
                 has_bled = 0
                 if sys_bp > 160: has_bled += 1
                 if creat > 2.2 or liver_disease: has_bled += 1
@@ -620,26 +629,22 @@ else:
                 if age > 65: has_bled += 1
                 if nsaid or anticoag: has_bled += 1
 
-                # 4. SIRS Score (Updated to ignore 0s)
+                # 4. SIRS Score (FIXED LOGIC - IGNORES ZEROS)
                 sirs_score = 0
                 
-                # Temp check: Only if temp > 0
+                # Fix: Check > 0 so "0" isn't counted as hypothermia
                 if final_temp_c > 0 and (final_temp_c > 38 or final_temp_c < 36): 
                     sirs_score += 1
                 
-                # HR check
                 if hr > 90: sirs_score += 1
-                
-                # Resp check
                 if resp_rate > 20: sirs_score += 1
                 
-                # WBC check: Only if WBC > 0
+                # Fix: Check > 0 so "0" isn't counted as leukopenia
                 if wbc > 0 and (wbc > 12 or wbc < 4): 
                     sirs_score += 1
 
-                # 5. SAVE STATE
+                # 5. Save State
                 status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis > 50) else 'Stable'
-                
                 st.session_state['patient_data'] = {
                     'id': 'Calculated Patient', 'age': age,
                     'bleeding_risk': float(pred_bleeding), 'aki_risk': int(pred_aki),
@@ -651,25 +656,200 @@ else:
                 
                 st.success("Analysis Complete!")
                 
-                # 6. DISPLAY RESULTS
+                # 6. Display Results
                 st.divider()
                 st.markdown("#### 📊 Clinical Analysis Results")
                 
-                # Row 1: Major Risks
                 r1, r2, r3, r4 = st.columns(4)
                 r1.metric("Bleeding Risk (AI)", f"{pred_bleeding:.1f}%")
                 r2.metric("AKI Risk (Rule)", f"{pred_aki}%")
                 r3.metric("Sepsis Score (qSOFA)", f"{pred_sepsis}")
                 r4.metric("HAS-BLED Score", f"{has_bled}/9", "High Risk" if has_bled >=3 else "Low Risk")
 
-                # Row 2: Clinical Context (Now BMI is safe!)
                 d1, d2, d3, d4 = st.columns(4)
-                d1.metric("MAP (Perfusion)", f"{int(map_val)} mmHg", "Low" if map_val < 65 else "Normal")
+                d1.metric("MAP (Perfusion)", f"{int(map_val)} mmHg", "Low" if map_val > 0 and map_val < 65 else "Normal")
                 d2.metric("SIRS Score", f"{sirs_score}/4", "Inflammation" if sirs_score >=2 else "Normal")
                 d3.metric("BMI Category", f"{bmi:.1f}", "Obese" if bmi > 30 else "Normal")
                 d4.metric("Pain Status", f"{pain}/10", "Managed")
 
-                # 7. ALERTS
+                # 7. Alerts
+                if pred_sepsis > 0:
+                    st.error(f"🔴 SEPSIS RISK: qSOFA Score of {pred_sepsis} suggests organ dysfunction.")
+                
+                with st.expander("⚠️ Detailed Clinical Alerts", expanded=True):
+                    if potassium > 5.5: st.error(f"⚠️ HYPERKALEMIA: K+ {potassium}")
+                    if platelets > 0 and platelets < 100: st.error(f"⚠️ THROMBOCYTOPENIA: Plt {platelets}")
+                    if glucose < 70 and glucose > 0: st.warning(f"⚠️ HYPOGLYCEMIA: Glucose {glucose}")
+                    if lactate > 2.0: st.warning(f"⚠️ LACTATE ELEVATED: {lactate} mmol/L")
+        
+        with st.form("risk_form"):
+            # 1. Patient Demographics
+            st.markdown("#### 1. Patient Demographics")
+            c1, c2, c3, c4 = st.columns(4)
+            age = c1.number_input("Age", min_value=0, max_value=120, value=0)
+            gender = c2.selectbox("Gender", ["Male", "Female"])
+            ethnicity = c3.selectbox("Ethnicity", ["Caucasian", "African American", "Asian", "Hispanic", "Other"])
+            
+            with c4:
+                w_val, w_unit = st.columns([2, 1]) 
+                weight_input = w_val.number_input("Weight", min_value=0.0, max_value=400.0, value=0.0)
+                weight_scale = w_unit.selectbox("Unit", ["kg", "lbs"], key="w_unit")
+
+            p1, p2, p3 = st.columns(3)
+            height = p1.number_input("Height (cm)", min_value=0, max_value=250, value=0)
+            smoking = p2.selectbox("Smoking Status", ["Never", "Former", "Current"])
+            admit_type = p3.selectbox("Admission Type", ["Emergency", "Elective", "Trauma"])
+
+            # Logic: Weight Conversion
+            weight_kg = weight_input * 0.453592 if weight_scale == "lbs" else weight_input
+            
+            if height > 0:
+                bmi = weight_kg / ((height/100)**2)
+                p1.caption(f"Calculated BMI: {bmi:.1f}")
+            else:
+                bmi = 0.0
+                p1.caption("Enter Height for BMI")
+
+            # 2. Vital Signs
+            st.markdown("#### 2. Vital Signs & Observations")
+            v1, v2, v3, v4 = st.columns(4)
+            sys_bp = v1.number_input("Systolic BP (mmHg)", min_value=0, max_value=300, value=0)
+            dia_bp = v2.number_input("Diastolic BP (mmHg)", min_value=0, max_value=200, value=0)
+            hr = v3.number_input("Heart Rate (bpm)", min_value=0, max_value=300, value=0)
+            resp_rate = v4.number_input("Resp Rate (bpm)", min_value=0, max_value=60, value=0)
+            
+            v5, v6, v7, v8 = st.columns(4)
+            with v5:
+                t_val, t_unit = st.columns([2, 1]) 
+                temp_input = t_val.number_input("Temp", min_value=0.0, max_value=115.0, value=0.0, step=0.1)
+                temp_scale = t_unit.selectbox("Unit", ["°C", "°F"], key="t_unit")
+            
+            o2_sat = v6.number_input("O2 Sat (%)", min_value=0, max_value=100, value=0)
+            glucose = v7.number_input("Fingerstick Glucose (mg/dL)", min_value=0, max_value=600, value=0)
+            pain = v8.slider("Pain Score (VAS)", 0, 10, 0)
+
+            # 3. Lab Values
+            st.markdown("#### 3. Laboratory Values")
+            l1, l2, l3, l4 = st.columns(4)
+            creat = l1.number_input("Creatinine (mg/dL)", min_value=0.0, max_value=20.0, value=0.0)
+            potassium = l2.number_input("Potassium (K+)", min_value=0.0, max_value=10.0, value=0.0)
+            inr = l3.number_input("INR", min_value=0.0, max_value=10.0, value=0.0)
+            bun = l4.number_input("BUN (mg/dL)", min_value=0, max_value=100, value=0)
+            
+            l5, l6, l7, l8 = st.columns(4)
+            wbc = l5.number_input("WBC (10^9/L)", min_value=0.0, max_value=50.0, value=0.0)
+            hgb = l6.number_input("Hemoglobin (g/dL)", min_value=0.0, max_value=20.0, value=0.0)
+            platelets = l7.number_input("Platelets (10^9/L)", min_value=0, max_value=1000, value=0)
+            lactate = l8.number_input("Lactate (mmol/L)", min_value=0.0, max_value=20.0, value=0.0)
+
+            # 4. Medications & Comorbidities
+            st.markdown("#### 4. Comorbidities & Medications")
+            m1, m2, m3, m4 = st.columns(4)
+            anticoag = m1.checkbox("Anticoagulant (Blood Thinner)")
+            nsaid = m2.checkbox("NSAID Use (e.g., Ibuprofen)") 
+            active_chemo = m3.checkbox("Active Chemotherapy")
+            hba1c_high = m4.checkbox("Diabetes Uncontrolled (A1c > 9%)")
+            
+            m5, m6, m7, m8 = st.columns(4)
+            diuretic = m5.checkbox("Diuretic Use (Lasix/HCTZ)")
+            acei = m6.checkbox("ACEi/ARB (BP Meds)")
+            insulin = m7.checkbox("Insulin Dependent")
+            liver_disease = m8.checkbox("Liver Disease / Cirrhosis")
+            
+            h1, h2, h3 = st.columns(3)
+            heart_failure = h1.checkbox("Heart Failure (CHF)") 
+            gi_bleed = h2.checkbox("History of GI Bleed")
+            altered_mental = h3.checkbox("Altered Mental Status (Confusion)")
+
+            submitted = st.form_submit_button("Run Clinical Analysis", type="primary")
+
+            if submitted:
+                # --- A. PRE-PROCESSING ---
+                if temp_scale == "°F": 
+                    final_temp_c = (temp_input - 32) * 5/9 
+                else: 
+                    final_temp_c = temp_input
+                
+                # Fix: Handle 0 BP
+                if sys_bp > 0:
+                    map_val = (sys_bp + (2 * dia_bp)) / 3 
+                else:
+                    map_val = 0
+
+                # --- B. RISK CALCULATIONS ---
+                
+                # 1. AI Bleeding Prediction
+                is_high_bp = 1 if sys_bp > 140 else 0
+                input_df = pd.DataFrame({
+                    'age': [age], 'inr': [inr], 
+                    'anticoagulant': [1 if anticoag else 0],
+                    'gi_bleed': [1 if gi_bleed else 0], 
+                    'high_bp': [is_high_bp],
+                    'antiplatelet': [0], 
+                    'gender_female': [1 if gender == "Female" else 0],
+                    'weight': [weight_kg], 
+                    'liver_disease': [1 if liver_disease else 0]
+                })
+                pred_bleeding = bleeding_model.predict(input_df)[0]
+                
+                # 2. Rule Predictions
+                pred_aki = calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
+                pred_sepsis = calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
+                pred_hypo = calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
+
+                # 3. HAS-BLED Score
+                has_bled = 0
+                if sys_bp > 160: has_bled += 1
+                if creat > 2.2 or liver_disease: has_bled += 1
+                if gi_bleed: has_bled += 1
+                if inr > 1.0: has_bled += 1
+                if age > 65: has_bled += 1
+                if nsaid or anticoag: has_bled += 1
+
+                # 4. SIRS Score (FIXED LOGIC - IGNORES ZEROS)
+                sirs_score = 0
+                
+                # Fix: Check > 0 so "0" isn't counted as hypothermia
+                if final_temp_c > 0 and (final_temp_c > 38 or final_temp_c < 36): 
+                    sirs_score += 1
+                
+                if hr > 90: sirs_score += 1
+                if resp_rate > 20: sirs_score += 1
+                
+                # Fix: Check > 0 so "0" isn't counted as leukopenia
+                if wbc > 0 and (wbc > 12 or wbc < 4): 
+                    sirs_score += 1
+
+                # 5. Save State
+                status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis > 50) else 'Stable'
+                st.session_state['patient_data'] = {
+                    'id': 'Calculated Patient', 'age': age,
+                    'bleeding_risk': float(pred_bleeding), 'aki_risk': int(pred_aki),
+                    'sepsis_risk': int(pred_sepsis), 'hypo_risk': int(pred_hypo),
+                    'status': status_calc
+                }
+                
+                save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
+                
+                st.success("Analysis Complete!")
+                
+                # 6. Display Results
+                st.divider()
+                st.markdown("#### 📊 Clinical Analysis Results")
+                
+                r1, r2, r3, r4 = st.columns(4)
+                r1.metric("Bleeding Risk (AI)", f"{pred_bleeding:.1f}%")
+                r2.metric("AKI Risk (Rule)", f"{pred_aki}%")
+                r3.metric("Sepsis Score (qSOFA)", f"{pred_sepsis}")
+                r4.metric("HAS-BLED Score", f"{has_bled}/9", "High Risk" if has_bled >=3 else "Low Risk")
+
+                d1, d2, d3, d4 = st.columns(4)
+                d1.metric("MAP (Perfusion)", f"{int(map_val)} mmHg", "Low" if map_val > 0 and map_val < 65 else "Normal")
+                d2.metric("SIRS Score", f"{sirs_score}/4", "Inflammation" if sirs_score >=2 else "Normal")
+                d3.metric("BMI Category", f"{bmi:.1f}", "Obese" if bmi > 30 else "Normal")
+                d4.metric("Pain Status", f"{pain}/10", "Managed")
+
+                # 7. Alerts
                 if pred_sepsis > 0:
                     st.error(f"🔴 SEPSIS RISK: qSOFA Score of {pred_sepsis} suggests organ dysfunction.")
                 
