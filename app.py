@@ -1056,26 +1056,27 @@ else:
                         st.markdown("#### 🤖 Clinical Recommendation")
                         st.write(f"> *{result['rec']}*")
                         
-    # --- MODULE 5: MEDICATION CHECKER ---
+# --- MODULE 5: MEDICATION CHECKER (UPDATED UI) ---
     elif menu == "Medication Checker":
         st.subheader("Drug-Drug Interaction Checker")
         
-        # 1. Add a Guide so users know what to test
-        with st.expander("ℹ️  Supported Drug Categories (Demo Database)"):
+        # UPDATED GUIDE: Now reflects your massive database expansion
+        with st.expander("ℹ️  Supported Drug Categories (Expanded Database)"):
             st.markdown("""
-            This demo checks for **High-Alert** interactions in these specific categories:
-            * **🫀 Cardiac:** Warfarin, Amiodarone, Digoxin, Sildenafil, Nitroglycerin, Spironolactone, Lisinopril.
-            * **💊 Pain/NSAIDs:** Ibuprofen, Tramadol, Fentanyl, Methotrexate, Oxycodone.
-            * **🧠 Psych/Neuro:** Sertraline, Fluoxetine, Linezolid, Lithium, Citalopram.
-            * **🦠 Antibiotics:** Ciprofloxacin, Erythromycin, Trimethoprim (Bactrim), Claritromycin.
+            This demo checks for **High-Alert** interactions across these categories:
+            * **🫀 Cardiac & Blood:** Warfarin, Amiodarone, Digoxin, Sildenafil, Nitroglycerin, Spironolactone, Lisinopril, Apixaban, Clopidogrel.
+            * **💊 Pain & Inflammation:** Ibuprofen, Tramadol, Fentanyl, Methotrexate, Oxycodone, Naproxen.
+            * **🧠 Psych & Neuro:** Sertraline, Fluoxetine, Linezolid, Lithium, Citalopram, Tizanidine.
+            * **🦠 Antibiotics:** Ciprofloxacin, Erythromycin, Bactrim (Trimethoprim), Clarithromycin, Doxycycline, Metronidazole.
+            * **🍷 Lifestyle & Food:** Alcohol, Grapefruit Juice.
             """)
-        
+            
         st.caption("Type two drugs below to check for CRITICAL or MAJOR interactions.")
 
         # 2. Input Fields
         col_d1, col_d2 = st.columns(2)
-        d1 = col_d1.text_input("Drug A", placeholder="e.g., Warfarin")
-        d2 = col_d2.text_input("Drug B", placeholder="e.g., Ibuprofen")
+        d1 = col_d1.text_input("Drug A", placeholder="e.g. Warfarin")
+        d2 = col_d2.text_input("Drug B", placeholder="e.g. Ibuprofen")
 
         # 3. Logic
         if d1 and d2:
@@ -1091,10 +1092,26 @@ else:
             else: 
                 st.success(res)
 
-    # --- MODULE 6: CHATBOT ---
+# --- MODULE 6: CHATBOT (UPDATED UI) ---
     elif menu == "Clinical Chatbot":
         st.subheader("AI Clinical Assistant")
-        q = st.text_input("Ask a clinical question (e.g. 'Sepsis', 'AFib', 'Metformin'):")
+        
+        # Guide: Tells the user what the bot knows
+        with st.expander("ℹ️  What can I ask? (Supported Topics)"):
+            st.markdown("""
+            **The database covers 250+ clinical topics across these specialties:**
+            * **🫀 Cardiology:** MI, AFib, CHF, Hypertension, ECG Rhythms (VTach, VFib).
+            * **🫁 Respiratory:** COPD, Asthma, Pneumonia, Pulmonary Embolism.
+            * **🧠 Neurology:** Stroke (CVA), TIA, Seizures, Meningitis.
+            * **💊 Pharmacology:** Warfarin, Insulin, Metformin, Lisinopril, Vancomycin.
+            * **🩸 Labs & Vitals:** INR, Creatinine, Troponin, Lactate, WBC, Platelets.
+            * **🦠 Infectious Disease:** Sepsis, Septic Shock, C. Diff, MRSA.
+            * **🏥 Abbreviations:** NPO, PRN, BID, QD, AC/PC.
+            """)
+            st.caption("Try typing a term (e.g., 'Sepsis') or a question (e.g., 'What is the treatment for DKA?').")
+
+        # Chat Input
+        q = st.text_input("Ask a clinical question:")
         if q:
             with st.chat_message("assistant"):
                 st.write(chatbot_response(q))
