@@ -499,7 +499,8 @@ else:
             "Clinical Chatbot"
         ])
         st.info("v2.6 - Zero-Base Inputs")
-        # --- MODULE 1: RISK CALCULATOR ---
+    
+    # --- MODULE 1: RISK CALCULATOR ---
     if menu == "Risk Calculator":
         st.subheader("Acute Risk Calculator (Advanced)")
         st.caption("Enter patient values below. Default is 0.")
@@ -619,11 +620,22 @@ else:
                 if age > 65: has_bled += 1
                 if nsaid or anticoag: has_bled += 1
 
+                # 4. SIRS Score (Updated to ignore 0s)
                 sirs_score = 0
-                if final_temp_c > 38 or final_temp_c < 36: sirs_score += 1
+                
+                # Temp check: Only if temp > 0
+                if final_temp_c > 0 and (final_temp_c > 38 or final_temp_c < 36): 
+                    sirs_score += 1
+                
+                # HR check
                 if hr > 90: sirs_score += 1
+                
+                # Resp check
                 if resp_rate > 20: sirs_score += 1
-                if wbc > 12 or wbc < 4: sirs_score += 1
+                
+                # WBC check: Only if WBC > 0
+                if wbc > 0 and (wbc > 12 or wbc < 4): 
+                    sirs_score += 1
 
                 # 5. SAVE STATE
                 status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis > 50) else 'Stable'
