@@ -673,7 +673,7 @@ else:
                 d4.metric("Pain Status", f"{pain}/10", "Managed")
 
                 # 7. Enhanced Clinical Alerts
-                with st.expander("⚠️ Detailed Clinical Alerts", expanded=True):
+             with st.expander("⚠️ Detailed Clinical Alerts", expanded=True):
                     # --- CALC BMI FOR ALERTS ---
                 if height > 0 and weight_kg > 0:
                     bmi_calc = weight_kg / ((height / 100) ** 2)
