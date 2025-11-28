@@ -699,6 +699,7 @@ else:
                     st.dataframe(history_df, use_container_width=True)
                     
                     st.markdown("### 📊 Cohort Analytics")
+                    c1, c2 = st.columns(2)
                     c1.bar_chart(history_df['aki_risk_score'])
                     c2.scatter_chart(history_df, x='age', y='sbp')
                     
