@@ -672,25 +672,28 @@ else:
                 d3.metric("BMI Category", f"{bmi:.1f}", "Obese" if bmi > 30 else "Normal")
                 d4.metric("Pain Status", f"{pain}/10", "Managed")
 
-                # 7. Enhanced Clinical Alerts
-             with st.expander("⚠️ Detailed Clinical Alerts", expanded=True):
-                    # --- CALC BMI FOR ALERTS ---
-                if height > 0 and weight_kg > 0:
-                    bmi_calc = weight_kg / ((height / 100) ** 2)
-                else:
-                    bmi_calc = 0:
-                    if bmi >= 40:
-                        st.error(f"🔴 MORBID OBESITY (Class III): BMI {bmi:.1f}")
-                        st.caption("⚠️ Clinical Effects: High risk of Difficult Airway/Intubation, OSA, and Medication Dosing errors.")
-                    elif bmi >= 35:
-                        st.warning(f"⚠️ Severe Obesity (Class II): BMI {bmi:.1f}")
-                    elif bmi >= 30:
-                        st.info(f"ℹ️ Obesity (Class I): BMI {bmi:.1f} - Metabolic Syndrome risk.")
-                    elif bmi > 0 and bmi < 18.5:
-                        st.warning(f"⚠️ UNDERWEIGHT: BMI {bmi:.1f}")
-                        st.caption("⚠️ Clinical Effects: Risk of frailty, poor wound healing, and malnutrition.")
+# 7. Enhanced Clinical Alerts
+                with st.expander("⚠️ Detailed Clinical Alerts", expanded=True):
                     
-                    # --- A. CRITICAL LAB VALUES ---
+                    # --- A. CALCULATE BMI (Indented 4 spaces) ---
+                    if height > 0 and weight_kg > 0:
+                        bmi_calc = weight_kg / ((height / 100) ** 2)
+                    else:
+                        bmi_calc = 0
+
+                    # --- B. BMI & NUTRITION ALERTS ---
+                    if bmi_calc >= 40:
+                        st.error(f"🔴 MORBID OBESITY (Class III): BMI {bmi_calc:.1f}")
+                        st.caption("⚠️ Clinical Effects: High risk of Difficult Airway/Intubation, OSA, and Medication Dosing errors.")
+                    elif bmi_calc >= 35:
+                        st.warning(f"⚠️ Severe Obesity (Class II): BMI {bmi_calc:.1f}")
+                    elif bmi_calc >= 30:
+                        st.info(f"ℹ️ Obesity (Class I): BMI {bmi_calc:.1f} - Metabolic Syndrome risk.")
+                    elif bmi_calc > 0 and bmi_calc < 18.5:
+                        st.warning(f"⚠️ UNDERWEIGHT: BMI {bmi_calc:.1f}")
+                        st.caption("⚠️ Clinical Effects: Risk of frailty, poor wound healing, and malnutrition.")
+
+                    # --- C. CRITICAL LAB VALUES ---
                     if potassium > 5.5: 
                         st.error(f"🔴 CRITICAL HYPERKALEMIA: K+ {potassium} (Risk of Arrhythmia)")
                     elif potassium < 3.5 and potassium > 0: 
@@ -722,7 +725,7 @@ else:
                     elif hgb > 0 and hgb < 10.0:
                         st.warning(f"⚠️ Anemia: Hgb {hgb} g/dL")
 
-                    # --- B. CRITICAL VITALS ---
+                    # --- D. CRITICAL VITALS ---
                     if sys_bp > 180 or dia_bp > 120:
                         st.error(f"🔴 HYPERTENSIVE CRISIS: BP {sys_bp}/{dia_bp} mmHg")
                     elif sys_bp > 0 and sys_bp < 90:
@@ -743,7 +746,7 @@ else:
                     elif final_temp_c > 0 and final_temp_c < 35.0:
                         st.warning(f"⚠️ Hypothermia: {final_temp_c}°C")
 
-                    # --- C. PROTOCOL ALERTS ---
+                    # --- E. PROTOCOL ALERTS ---
                     if pred_sepsis >= 2:
                         st.error("🚨 SEPSIS ALERT: qSOFA score ≥ 2. Initiate Sepsis Protocol.")
                     
@@ -751,7 +754,8 @@ else:
                         st.info(f"ℹ️ Pain Management: Patient reports severe pain ({pain}/10).")
 
                     # If no alerts triggered
-                    if potassium < 5.5 and potassium > 3.5 and platelets > 100 and glucose > 70 and sys_bp < 180 and sys_bp > 90:
+                    if (potassium < 5.5 and potassium > 3.5 and platelets > 100 and glucose > 70 
+                        and sys_bp < 180 and sys_bp > 90 and bmi_calc < 30 and bmi_calc > 18.5):
                          st.success("✅ No critical alerts detected.")
         
      # --- MODULE 2: PATIENT HISTORY (SQL) ---
