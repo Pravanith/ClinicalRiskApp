@@ -672,15 +672,72 @@ else:
                 d3.metric("BMI Category", f"{bmi:.1f}", "Obese" if bmi > 30 else "Normal")
                 d4.metric("Pain Status", f"{pain}/10", "Managed")
 
-                # 7. Alerts
-                if pred_sepsis > 0:
-                    st.error(f"🔴 SEPSIS RISK: qSOFA Score of {pred_sepsis} suggests organ dysfunction.")
-                
+                # 7. Enhanced Clinical Alerts
                 with st.expander("⚠️ Detailed Clinical Alerts", expanded=True):
-                    if potassium > 5.5: st.error(f"⚠️ HYPERKALEMIA: K+ {potassium}")
-                    if platelets > 0 and platelets < 100: st.error(f"⚠️ THROMBOCYTOPENIA: Plt {platelets}")
-                    if glucose < 70 and glucose > 0: st.warning(f"⚠️ HYPOGLYCEMIA: Glucose {glucose}")
-                    if lactate > 2.0: st.warning(f"⚠️ LACTATE ELEVATED: {lactate} mmol/L")
+                    
+                    # --- A. CRITICAL LAB VALUES ---
+                    if potassium > 5.5: 
+                        st.error(f"🔴 CRITICAL HYPERKALEMIA: K+ {potassium} (Risk of Arrhythmia)")
+                    elif potassium < 3.5 and potassium > 0: 
+                        st.warning(f"⚠️ Hypokalemia: K+ {potassium} (Monitor ECG)")
+                        
+                    if platelets > 0 and platelets < 50: 
+                        st.error(f"🔴 SEVERE THROMBOCYTOPENIA: Plt {platelets} (High Bleed Risk)")
+                    elif platelets >= 50 and platelets < 100:
+                        st.warning(f"⚠️ Thrombocytopenia: Plt {platelets}")
+
+                    if glucose < 70 and glucose > 0: 
+                        st.error(f"🔴 HYPOGLYCEMIA: Glucose {glucose} mg/dL (Treat Immediately)")
+                    elif glucose > 250:
+                        st.warning(f"⚠️ Hyperglycemia: Glucose {glucose} mg/dL (Check Ketones)")
+
+                    if lactate > 4.0:
+                        st.error(f"🔴 SEVERE LACTIC ACIDOSIS: {lactate} mmol/L (Septic Shock Marker)")
+                    elif lactate > 2.0: 
+                        st.warning(f"⚠️ Elevated Lactate: {lactate} mmol/L (Sepsis warning)")
+                        
+                    if inr > 3.0:
+                        st.error(f"🔴 HIGH INR: {inr} (Bleeding Risk Critical)")
+                        
+                    if creat > 3.0:
+                        st.error(f"🔴 ACUTE RENAL FAILURE: Cr {creat} mg/dL")
+                    
+                    if hgb > 0 and hgb < 7.0:
+                        st.error(f"🔴 CRITICAL ANEMIA: Hgb {hgb} g/dL (Transfusion likely needed)")
+                    elif hgb > 0 and hgb < 10.0:
+                        st.warning(f"⚠️ Anemia: Hgb {hgb} g/dL")
+
+                    # --- B. CRITICAL VITALS ---
+                    if sys_bp > 180 or dia_bp > 120:
+                        st.error(f"🔴 HYPERTENSIVE CRISIS: BP {sys_bp}/{dia_bp} mmHg")
+                    elif sys_bp > 0 and sys_bp < 90:
+                        st.error(f"🔴 HYPOTENSION: BP {sys_bp}/{dia_bp} mmHg (Shock?)")
+
+                    if hr > 120:
+                        st.error(f"🔴 TACHYCARDIA: HR {hr} bpm")
+                    elif hr > 0 and hr < 50:
+                        st.warning(f"⚠️ Bradycardia: HR {hr} bpm")
+
+                    if o2_sat > 0 and o2_sat < 88:
+                        st.error(f"🔴 CRITICAL HYPOXIA: SpO2 {o2_sat}%")
+                    elif o2_sat > 0 and o2_sat < 92:
+                        st.warning(f"⚠️ Hypoxia: SpO2 {o2_sat}%")
+                        
+                    if final_temp_c > 39.0:
+                        st.warning(f"⚠️ High Fever: {final_temp_c}°C")
+                    elif final_temp_c > 0 and final_temp_c < 35.0:
+                        st.warning(f"⚠️ Hypothermia: {final_temp_c}°C")
+
+                    # --- C. PROTOCOL ALERTS ---
+                    if pred_sepsis >= 2:
+                        st.error("🚨 SEPSIS ALERT: qSOFA score ≥ 2. Initiate Sepsis Protocol.")
+                    
+                    if pain >= 7:
+                        st.info(f"ℹ️ Pain Management: Patient reports severe pain ({pain}/10).")
+
+                    # If no alerts triggered
+                    if potassium < 5.5 and potassium > 3.5 and platelets > 100 and glucose > 70 and sys_bp < 180 and sys_bp > 90:
+                         st.success("✅ No critical alerts detected.")
         
      # --- MODULE 2: PATIENT HISTORY (SQL) ---
     elif menu == "Patient History (SQL)":
