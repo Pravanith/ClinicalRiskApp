@@ -678,7 +678,7 @@ else:
                 if height > 0 and weight_kg > 0:
                     bmi_calc = weight_kg / ((height / 100) ** 2)
                 else:
-                    bmi_calc = 0
+                    bmi_calc = 0:
                     if bmi >= 40:
                         st.error(f"🔴 MORBID OBESITY (Class III): BMI {bmi:.1f}")
                         st.caption("⚠️ Clinical Effects: High risk of Difficult Airway/Intubation, OSA, and Medication Dosing errors.")
