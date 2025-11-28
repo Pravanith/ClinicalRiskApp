@@ -674,6 +674,21 @@ else:
 
                 # 7. Enhanced Clinical Alerts
                 with st.expander("⚠️ Detailed Clinical Alerts", expanded=True):
+                    # --- CALC BMI FOR ALERTS ---
+                if height > 0 and weight_kg > 0:
+                    bmi_calc = weight_kg / ((height / 100) ** 2)
+                else:
+                    bmi_calc = 0
+                    if bmi >= 40:
+                        st.error(f"🔴 MORBID OBESITY (Class III): BMI {bmi:.1f}")
+                        st.caption("⚠️ Clinical Effects: High risk of Difficult Airway/Intubation, OSA, and Medication Dosing errors.")
+                    elif bmi >= 35:
+                        st.warning(f"⚠️ Severe Obesity (Class II): BMI {bmi:.1f}")
+                    elif bmi >= 30:
+                        st.info(f"ℹ️ Obesity (Class I): BMI {bmi:.1f} - Metabolic Syndrome risk.")
+                    elif bmi > 0 and bmi < 18.5:
+                        st.warning(f"⚠️ UNDERWEIGHT: BMI {bmi:.1f}")
+                        st.caption("⚠️ Clinical Effects: Risk of frailty, poor wound healing, and malnutrition.")
                     
                     # --- A. CRITICAL LAB VALUES ---
                     if potassium > 5.5: 
