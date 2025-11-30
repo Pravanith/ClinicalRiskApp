@@ -393,3 +393,68 @@ def chatbot_response(text):
             return f"**{key.upper()}**: {KNOWLEDGE_BASE[key]}"
 
     return "ℹ️ I didn't recognize that term. Try specific medical terms like 'Sepsis', 'Warfarin', 'INR', or 'Stroke'."
+    # ==========================================
+# 6. AI DIAGNOSTIC ENGINE (REAL GEMINI INTEGRATION)
+# ==========================================
+def consult_ai_doctor(role, user_input, patient_context=None):
+    import google.generativeai as genai
+    import streamlit as st
+
+    # 1. Securely Load API Key from Streamlit Secrets
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+    except:
+        # Fallback error message if secrets aren't set up
+        return "⚠️ Error: API Key not found. Please set GEMINI_API_KEY in Streamlit Secrets."
+
+    # 2. Configure Gemini
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-pro')
+
+    # 3. Construct the Prompt based on Role
+    if role == 'patient':
+        prompt = f"""
+        You are an empathetic medical triage assistant. 
+        The user is a patient describing symptoms. 
+        
+        User Input: "{user_input}"
+        
+        Task:
+        1. Translate their layperson description into medical terminology.
+        2. Suggest 3 potential causes (differential diagnosis).
+        3. Advise on urgency (Home care vs. Urgent Care vs. ER).
+        4. Disclaimer: Remind them you are an AI and this is not medical advice.
+        """
+        
+    elif role == 'provider':
+        # Flatten context for the AI
+        pt_id = patient_context.get('id', 'Unknown')
+        age = patient_context.get('age', 'Unknown')
+        status = patient_context.get('status', 'Stable')
+        bleed_risk = patient_context.get('bleeding_risk', 0)
+        aki_risk = patient_context.get('aki_risk', 0)
+        
+        prompt = f"""
+        You are an expert Critical Care consultant assisting a doctor.
+        
+        Patient Context:
+        - Age: {age}
+        - Risk Status: {status}
+        - Bleeding Risk Score (XGBoost): {bleed_risk:.1f}%
+        - Kidney Injury Risk: {aki_risk}%
+        
+        Doctor's Observation: "{user_input}"
+        
+        Task:
+        1. Synthesize the risk scores with the observation.
+        2. Provide a differential diagnosis tailored to the high risks identified.
+        3. Suggest a concise treatment plan (Labs, Imaging, Meds).
+        """
+
+    # 4. Call Gemini API
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"⚠️ AI Connection Error: {str(e)}"
+    
