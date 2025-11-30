@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -49,7 +48,7 @@ def render_cover_page():
         st.session_state['entered_app'] = True
         st.rerun()
 
-# --- MODULE 1: RISK CALCULATOR (FULL VERSION) ---
+# --- MODULE 1: RISK CALCULATOR ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator (Advanced)")
     st.caption("Enter patient values below. Default is 0.")
@@ -299,7 +298,7 @@ def render_dashboard():
         st.markdown("#### 📋 Patient Status")
         st.info(f"Current Status: {data['status']}")
 
-# --- MODULE 4: BATCH ANALYSIS (Simplified for structure) ---
+# --- MODULE 4: BATCH ANALYSIS (CSV) ---
 def render_batch_analysis():
     st.subheader("Bulk Patient Processing & Diagnostic Triage")
     
@@ -356,7 +355,6 @@ def render_batch_analysis():
                     # 2. Logic Diagnostics
                     def get_status(row):
                         alerts = []
-                        # Sepsis Check (calling backend logic manually here for speed)
                         qsofa = 0
                         if row['Systolic_BP'] < 100: qsofa += 1
                         if row['Resp_Rate'] > 22: qsofa += 1
@@ -407,7 +405,7 @@ def render_medication_checker():
         elif "MODERATE" in res: st.info(f"ℹ️ {res}")
         else: st.success(res)
 
-# --- MODULE 6: CHATBOT (FULL VERSION) ---
+# --- MODULE 6: CHATBOT ---
 def render_chatbot():
     st.subheader("AI Clinical Assistant")
     st.caption("Database covers 250+ clinical topics (Cardio, Resp, Neuro, Pharm, Labs).")
@@ -416,6 +414,44 @@ def render_chatbot():
     if q:
         with st.chat_message("assistant"):
             st.write(bk.chatbot_response(q))
+
+# --- MODULE 7: AI DIAGNOSTICIAN (NEW) ---
+def render_ai_diagnostician():
+    st.subheader("🧠 AI-Powered Clinical Support")
+    
+    # Toggle between Patient and Doctor view
+    mode = st.radio("Select Mode", ["Patient (Symptom Checker)", "Provider (Clinical Decision Support)"])
+    
+    if mode == "Patient (Symptom Checker)":
+        st.info("ℹ️ Describe your symptoms in plain English. The AI will triage the urgency.")
+        symptoms = st.text_area("How are you feeling?", placeholder="e.g., I have a sharp pain in my chest and trouble breathing...")
+        
+        if st.button("Analyze Symptoms"):
+            if symptoms:
+                with st.spinner("AI is analyzing symptoms..."):
+                    # Call Backend
+                    response = bk.consult_ai_doctor("patient", symptoms)
+                    st.markdown(response)
+                    st.warning("⚠️ Disclaimer: This is AI-generated advice. Do not use for emergencies.")
+            else:
+                st.error("Please enter symptoms first.")
+
+    elif mode == "Provider (Clinical Decision Support)":
+        # Get data from the Risk Calculator Session
+        current_data = st.session_state.get('patient_data', {})
+        
+        st.success(f"Context Loaded: Patient {current_data.get('id', 'Unknown')} | Risk Status: {current_data.get('status', 'Unknown')}")
+        
+        clinical_notes = st.text_area("Clinical Notes / Observations", placeholder="e.g., Patient appears pale, complaining of abdominal pain...")
+        
+        if st.button("Generate Differential Diagnosis"):
+            if clinical_notes:
+                with st.spinner("Consulting Medical LLM..."):
+                    # Pass the calculated risk data + notes to the AI
+                    response = bk.consult_ai_doctor("provider", clinical_notes, current_data)
+                    st.markdown(response)
+            else:
+                st.error("Please enter clinical notes.")
 
 # ---------------------------------------------------------
 # 3. MAIN APP CONTROLLER
@@ -431,9 +467,10 @@ else:
             "Live Dashboard", 
             "Batch Analysis (CSV)", 
             "Medication Checker", 
-            "Clinical Chatbot"
+            "Clinical Chatbot",
+            "AI Diagnostician"
         ])
-        st.info("v2.6 - Zero-Base Inputs")
+        st.info("v3.0 - AI Integrated")
 
     if menu == "Risk Calculator":
         render_risk_calculator()
@@ -447,3 +484,5 @@ else:
         render_medication_checker()
     elif menu == "Clinical Chatbot":
         render_chatbot()
+    elif menu == "AI Diagnostician":
+        render_ai_diagnostician()
