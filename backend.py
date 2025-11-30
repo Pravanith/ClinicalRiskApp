@@ -409,7 +409,7 @@ def consult_ai_doctor(role, user_input, patient_context=None):
 
     # 2. Configure Gemini
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-1.0-pro')
 
     # 3. Construct the Prompt based on Role
     if role == 'patient':
