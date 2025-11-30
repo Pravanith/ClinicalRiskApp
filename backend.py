@@ -393,23 +393,24 @@ def chatbot_response(text):
             return f"**{key.upper()}**: {KNOWLEDGE_BASE[key]}"
 
     return "ℹ️ I didn't recognize that term. Try specific medical terms like 'Sepsis', 'Warfarin', 'INR', or 'Stroke'."
-    # ==========================================
+# ==========================================
 # 6. AI DIAGNOSTIC ENGINE (REAL GEMINI INTEGRATION)
 # ==========================================
 def consult_ai_doctor(role, user_input, patient_context=None):
     import google.generativeai as genai
     import streamlit as st
 
-    # 1. Securely Load API Key from Streamlit Secrets
+    # 1. Securely Load API Key
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
     except:
-        # Fallback error message if secrets aren't set up
         return "⚠️ Error: API Key not found. Please set GEMINI_API_KEY in Streamlit Secrets."
 
-    # 2. Configure Gemini
+    # 2. Configure Gemini (Using the Stable 1.0 Pro Model)
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.0-pro')
+    
+    # We use 'gemini-pro' which maps to the stable 1.0 version
+    model = genai.GenerativeModel('gemini-pro')
 
     # 3. Construct the Prompt based on Role
     if role == 'patient':
@@ -428,7 +429,6 @@ def consult_ai_doctor(role, user_input, patient_context=None):
         
     elif role == 'provider':
         # Flatten context for the AI
-        pt_id = patient_context.get('id', 'Unknown')
         age = patient_context.get('age', 'Unknown')
         status = patient_context.get('status', 'Stable')
         bleed_risk = patient_context.get('bleeding_risk', 0)
@@ -456,5 +456,5 @@ def consult_ai_doctor(role, user_input, patient_context=None):
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
+        # Auto-Debug: If it fails, print the error to the screen so we know why
         return f"⚠️ AI Connection Error: {str(e)}"
-    
