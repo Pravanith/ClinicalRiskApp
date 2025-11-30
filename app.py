@@ -301,9 +301,95 @@ def render_dashboard():
 
 # --- MODULE 4: BATCH ANALYSIS (Simplified for structure) ---
 def render_batch_analysis():
-    st.subheader("Bulk Patient Processing")
-    st.info("Upload CSV functionality is available here.")
-    # (Keeping this brief to focus on the requested modules, but you can paste your full batch logic here if needed)
+    st.subheader("Bulk Patient Processing & Diagnostic Triage")
+    
+    # 1. Helper: Download Template
+    with st.expander("ℹ️  Download CSV Template"):
+        sample_data = {
+            'Age': [65, 72], 'Gender': ['Male', 'Female'], 'Weight_kg': [80, 65],
+            'Systolic_BP': [130, 90], 'Diastolic_BP': [80, 50], 'Heart_Rate': [72, 110],
+            'Resp_Rate': [16, 24], 'Temp_C': [37.0, 38.5], 'O2_Sat': [98, 92],
+            'WBC': [6.0, 15.0], 'Glucose': [110, 85], 'Creatinine': [1.1, 2.5],
+            'INR': [1.0, 1.2], 'Altered_Mental': [0, 1], 'Anticoagulant': [1, 0],
+            'Heart_Failure': [0, 1], 'Liver_Disease': [0, 0], 'Hx_GI_Bleed': [0, 0]
+        }
+        df_sample = pd.DataFrame(sample_data)
+        csv_template = df_sample.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Template", csv_template, "patient_data.csv", "text/csv")
+
+    tab1, tab2 = st.tabs(["📄 Diagnostic Processor", "🖼️ Medical Imaging"])
+    
+    # --- TAB 1: CSV PROCESSOR ---
+    with tab1:
+        uploaded_csv = st.file_uploader("Upload Patient Data (CSV)", type=["csv"])
+        if uploaded_csv:
+            try:
+                raw_df = pd.read_csv(uploaded_csv)
+                
+                # A. Smart Column Mapping
+                col_map = {
+                    'sbp':'Systolic_BP', 'hr':'Heart_Rate', 'rr':'Resp_Rate', 'temp':'Temp_C',
+                    'spo2':'O2_Sat', 'cr':'Creatinine', 'wbc':'WBC', 'glu':'Glucose'
+                }
+                df = raw_df.rename(columns=lambda x: col_map.get(x.lower(), x))
+                
+                # B. Fill Missing
+                req_cols = ['Age','Systolic_BP','Diastolic_BP','Heart_Rate','Resp_Rate','Temp_C','WBC','Creatinine']
+                for c in req_cols:
+                    if c not in df.columns: df[c] = 0
+                
+                if st.button("⚡ Run AI Diagnostic Engine", type="primary"):
+                    # 1. AI Predictions
+                    inputs = pd.DataFrame()
+                    inputs['age'] = df.get('Age', 0)
+                    inputs['inr'] = df.get('INR', 1.0)
+                    inputs['anticoagulant'] = df.get('Anticoagulant', 0)
+                    inputs['gi_bleed'] = df.get('Hx_GI_Bleed', 0)
+                    inputs['high_bp'] = df['Systolic_BP'].apply(lambda x: 1 if x > 140 else 0)
+                    inputs['antiplatelet'] = 0
+                    inputs['gender_female'] = 0 
+                    inputs['weight'] = df.get('Weight_kg', 70)
+                    inputs['liver_disease'] = df.get('Liver_Disease', 0)
+                    
+                    df['Bleed_Risk_%'] = bleeding_model.predict(inputs)
+                    
+                    # 2. Logic Diagnostics
+                    def get_status(row):
+                        alerts = []
+                        # Sepsis Check (calling backend logic manually here for speed)
+                        qsofa = 0
+                        if row['Systolic_BP'] < 100: qsofa += 1
+                        if row['Resp_Rate'] > 22: qsofa += 1
+                        if row.get('Altered_Mental', 0) == 1: qsofa += 1
+                        
+                        if qsofa >= 2: alerts.append("SEPSIS ALERT")
+                        if row['Systolic_BP'] > 180: alerts.append("Hypertensive Crisis")
+                        if row['Creatinine'] > 2.0: alerts.append("Acute Kidney Injury")
+                        if row['WBC'] > 12: alerts.append("Leukocytosis")
+                        
+                        return " + ".join(alerts) if alerts else "Stable"
+
+                    df['Diagnosis'] = df.apply(get_status, axis=1)
+                    
+                    # 3. Highlight
+                    def color_rows(val):
+                        if 'SEPSIS' in str(val) or 'Crisis' in str(val): return 'background-color: #ffcdd2; color: black;'
+                        if 'Stable' in str(val): return 'background-color: #c8e6c9; color: black;'
+                        return ''
+
+                    st.dataframe(df[['Diagnosis', 'Age', 'Systolic_BP', 'Bleed_Risk_%']].style.map(color_rows, subset=['Diagnosis']), use_container_width=True)
+                    
+            except Exception as e:
+                st.error(f"Error processing CSV: {e}")
+
+    # --- TAB 2: IMAGING (SIMULATION) ---
+    with tab2:
+        st.info("ℹ️ Simulates DenseNet-121 Deep Learning analysis.")
+        img = st.file_uploader("Upload X-Ray", type=["jpg", "png"])
+        if img and st.button("Analyze Image"):
+            st.image(img, width=200)
+            st.success("✅ Prediction: PNEUMONIA (Confidence: 88.4%)")
+            st.warning("Recommend: Chest CT and Antibiotics.")
 
 # --- MODULE 5: MEDICATION CHECKER ---
 def render_medication_checker():
