@@ -217,11 +217,12 @@ def render_risk_calculator():
         # 4. Save Patient Data
         bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
         
-        st.session_state['patient_data'] = {
-            'id': patient_id = f"PT-{random.randint(1000, 9999)}" 
+        # Generate Random ID
+        import random
+        patient_id = f"PT-{random.randint(1000, 9999)}"
 
-st.session_state['patient_data'] = {
-    'id': patient_id,, 
+        st.session_state['patient_data'] = {
+            'id': patient_id, 
             'age': age, 'gender': gender, 'weight': weight_kg,
             'sys_bp': sys_bp, 'dia_bp': dia_bp, 'hr': hr, 'resp_rate': resp_rate, 
             'temp_c': temp_c, 'o2_sat': o2_sat, 'pain': pain,
