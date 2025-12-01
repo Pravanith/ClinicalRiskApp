@@ -385,7 +385,7 @@ def chatbot_response(text):
     return "ℹ️ I didn't recognize that term. Try specific medical terms like 'Sepsis', 'Warfarin', 'INR', or 'Stroke'."
 
 # ==========================================
-# 6. AI DIAGNOSTIC ENGINE (REAL GEMINI INTEGRATION)
+# 6. AI DIAGNOSTIC ENGINE (UPDATED)
 # ==========================================
 def consult_ai_doctor(role, user_input, patient_context=None):
     import google.generativeai as genai
@@ -398,34 +398,44 @@ def consult_ai_doctor(role, user_input, patient_context=None):
         return "⚠️ Error: API Key not found. Please set GEMINI_API_KEY in Streamlit Secrets."
 
     genai.configure(api_key=api_key)
-    
-    # 2. USE THE MODEL WE FOUND IN YOUR LIST (The Fix)
     model = genai.GenerativeModel('gemini-2.0-flash')
 
-    # 3. Construct the Prompt
+    # 2. Construct Prompt based on Role
     if role == 'patient':
-        prompt = f"""
-        Medical Triage Assistant. User: "{user_input}"
-        Task: Suggest 3 potential causes and advise on urgency. 
-        Disclaimer: You are an AI, not a doctor.
-        """
+        # ... (Keep your existing patient code here) ...
+        prompt = f"""Medical Triage Assistant. User: "{user_input}". Task: Suggest 3 causes & urgency."""
+
     elif role == 'provider':
-        age = patient_context.get('age', 'Unknown')
-        status = patient_context.get('status', 'Stable')
-        bleed_risk = patient_context.get('bleeding_risk', 0)
-        aki_risk = patient_context.get('aki_risk', 0)
+        # ... (Keep your existing provider code here) ...
+        prompt = f"""Expert Consult. Observation: "{user_input}". Task: Differential diagnosis & plan."""
+
+    # --- NEW ROLE ADDED HERE ---
+    elif role == 'risk_assessment':
+        # Extract context
+        age = patient_context.get('age')
+        sbp = patient_context.get('sbp')
+        creat = patient_context.get('creat')
+        bleed = patient_context.get('bleeding_risk')
+        aki = patient_context.get('aki_risk')
+        sepsis = patient_context.get('sepsis_risk')
         
         prompt = f"""
-        Expert Consult. 
-        Patient Context: Age {age}, Status {status}, BleedRisk {bleed_risk:.1f}%, AKI Risk {aki_risk}%.
-        Observation: "{user_input}"
+        Act as a Senior ICU Consultant. Analyze this patient's risk profile:
+        - Age: {age}
+        - Systolic BP: {sbp}
+        - Creatinine: {creat}
+        - Predicted Bleeding Risk (AI): {bleed:.1f}%
+        - Kidney Injury Risk (Rule): {aki}%
+        - Sepsis Score: {sepsis}
         
-        Task: 
-        1. Differential diagnosis tailored to these specific risks.
-        2. Suggested treatment plan.
+        TASK:
+        1. Identify the primary clinical threat (The "Headline").
+        2. Explain WHY specific values are concerning in combination (e.g. High BP + High Bleed Risk).
+        3. Suggest 3 immediate medical actions.
+        4. Keep it concise (bullet points).
         """
 
-    # 4. Call Gemini
+    # 3. Call Gemini
     try:
         response = model.generate_content(prompt)
         return response.text
