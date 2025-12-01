@@ -394,7 +394,7 @@ def chatbot_response(text):
 
     return "ℹ️ I didn't recognize that term. Try specific medical terms like 'Sepsis', 'Warfarin', 'INR', or 'Stroke'."
 # ==========================================
-# 6. AI DIAGNOSTIC ENGINE (REAL GEMINI INTEGRATION)
+# 6. AI DIAGNOSTIC ENGINE (WITH AUTO-DEBUGGER)
 # ==========================================
 def consult_ai_doctor(role, user_input, patient_context=None):
     import google.generativeai as genai
@@ -406,55 +406,47 @@ def consult_ai_doctor(role, user_input, patient_context=None):
     except:
         return "⚠️ Error: API Key not found. Please set GEMINI_API_KEY in Streamlit Secrets."
 
-    # 2. Configure Gemini (Using the Stable 1.0 Pro Model)
     genai.configure(api_key=api_key)
     
-    # We use 'gemini-pro' which maps to the stable 1.0 version
-    model = genai.GenerativeModel('gemini-pro')
+    # 2. Try to use the latest model
+    target_model = 'gemini-1.5-flash' 
+    model = genai.GenerativeModel(target_model)
 
-    # 3. Construct the Prompt based on Role
+    # 3. Construct the Prompt
     if role == 'patient':
         prompt = f"""
-        You are an empathetic medical triage assistant. 
-        The user is a patient describing symptoms. 
-        
-        User Input: "{user_input}"
-        
-        Task:
-        1. Translate their layperson description into medical terminology.
-        2. Suggest 3 potential causes (differential diagnosis).
-        3. Advise on urgency (Home care vs. Urgent Care vs. ER).
-        4. Disclaimer: Remind them you are an AI and this is not medical advice.
+        Medical Triage Assistant. User: "{user_input}"
+        Task: Suggest 3 potential causes and advise on urgency. 
+        Disclaimer: You are an AI, not a doctor.
         """
-        
     elif role == 'provider':
-        # Flatten context for the AI
         age = patient_context.get('age', 'Unknown')
         status = patient_context.get('status', 'Stable')
         bleed_risk = patient_context.get('bleeding_risk', 0)
-        aki_risk = patient_context.get('aki_risk', 0)
-        
         prompt = f"""
-        You are an expert Critical Care consultant assisting a doctor.
-        
-        Patient Context:
-        - Age: {age}
-        - Risk Status: {status}
-        - Bleeding Risk Score (XGBoost): {bleed_risk:.1f}%
-        - Kidney Injury Risk: {aki_risk}%
-        
-        Doctor's Observation: "{user_input}"
-        
-        Task:
-        1. Synthesize the risk scores with the observation.
-        2. Provide a differential diagnosis tailored to the high risks identified.
-        3. Suggest a concise treatment plan (Labs, Imaging, Meds).
+        Expert Consult. Patient Age: {age}, Status: {status}, BleedRisk: {bleed_risk}. 
+        Observation: "{user_input}"
+        Task: Differential diagnosis and treatment plan.
         """
 
-    # 4. Call Gemini API
+    # 4. Call Gemini with AUTO-DIAGNOSTICS
     try:
         response = model.generate_content(prompt)
         return response.text
+        
     except Exception as e:
-        # Auto-Debug: If it fails, print the error to the screen so we know why
-        return f"⚠️ AI Connection Error: {str(e)}"
+        # --- IF IT FAILS, WE LIST THE VALID MODELS ---
+        error_msg = f"⚠️ **Connection Error:** {str(e)}\n\n"
+        error_msg += "🔍 **DIAGNOSTIC REPORT:**\n"
+        error_msg += "I tried to use `gemini-1.5-flash`, but it failed. Here are the models YOUR key can access:\n\n"
+        
+        try:
+            valid_models = []
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    valid_models.append(m.name)
+            error_msg += "\n".join([f"- `{m}`" for m in valid_models])
+        except Exception as list_e:
+            error_msg += f"Could not list models: {list_e}"
+            
+        return error_msg
