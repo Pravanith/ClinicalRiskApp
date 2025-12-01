@@ -191,19 +191,19 @@ def render_risk_calculator():
             
             st.success("Analysis Complete!")
             
-            # 5. Display Results
+            # 5. Display Results (UPDATED WITH TOOLTIPS)
             st.divider()
             st.markdown("#### 📊 Clinical Analysis Results")
             
             r1, r2, r3, r4 = st.columns(4)
-            r1.metric("Bleeding Risk (AI)", f"{pred_bleeding:.1f}%")
-            r2.metric("AKI Risk (Rule)", f"{pred_aki}%")
-            r3.metric("Sepsis Score (qSOFA)", f"{pred_sepsis}")
-            r4.metric("HAS-BLED Score", f"{has_bled}/9", "High Risk" if has_bled >=3 else "Low Risk")
+            r1.metric("Bleeding Risk (AI)", f"{pred_bleeding:.1f}%", help="Predicted by XGBoost Model")
+            r2.metric("AKI Risk (Rule)", f"{pred_aki}%", help="Rule-based calculation (KDIGO)")
+            r3.metric("Sepsis Score (qSOFA)", f"{pred_sepsis}", help="qSOFA Score (0-3)")
+            r4.metric("HAS-BLED Score", f"{has_bled}/9", "High Risk" if has_bled >=3 else "Low Risk", help="Standard Atrial Fibrillation Bleeding Risk Score")
 
             d1, d2, d3, d4 = st.columns(4)
-            d1.metric("MAP (Perfusion)", f"{int(map_val)} mmHg", "Low" if map_val > 0 and map_val < 65 else "Normal")
-            d2.metric("SIRS Score", f"{sirs_score}/4", "Inflammation" if sirs_score >=2 else "Normal")
+            d1.metric("MAP (Perfusion)", f"{int(map_val)} mmHg", "Low" if map_val > 0 and map_val < 65 else "Normal", help="Mean Arterial Pressure. Target > 65 mmHg.")
+            d2.metric("SIRS Score", f"{sirs_score}/4", "Inflammation" if sirs_score >=2 else "Normal", help="Systemic Inflammatory Response Syndrome criteria.")
             d3.metric("BMI Category", f"{bmi:.1f}", "Obese" if bmi > 30 else "Normal")
             d4.metric("Pain Status", f"{pain}/10", "Managed")
 
@@ -248,7 +248,7 @@ def render_history_sql():
     else:
         st.info("📭 Database is empty. Run a Risk Analysis to create records.")
 
-# --- MODULE 3: LIVE DASHBOARD ---
+# --- MODULE 3: LIVE DASHBOARD (UPDATED WITH TOOLTIPS) ---
 def render_dashboard():
     data = st.session_state['patient_data']
     is_critical = data['status'] == 'Critical'
@@ -256,10 +256,39 @@ def render_dashboard():
     st.subheader(f"🖥️ ICU Monitor: {data['id']}")
     
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Bleeding Risk", f"{data['bleeding_risk']:.1f}%", "High" if data['bleeding_risk'] > 50 else "Normal", delta_color="inverse")
-    m2.metric("AKI Risk", f"{data['aki_risk']}%", "Critical" if data['aki_risk'] > 50 else "Normal", delta_color="inverse")
-    m3.metric("Sepsis Score", f"{data.get('sepsis_risk', 0)}", "High" if data.get('sepsis_risk', 0) >= 2 else "Normal", delta_color="inverse")
-    m4.metric("Hypoglycemia", "YES" if data.get('hypo_risk', 0) > 0 else "NO", "Critical" if data.get('hypo_risk', 0) > 0 else "Normal", delta_color="inverse")
+    
+    # Tooltips added to the 'help' parameter
+    m1.metric(
+        "Bleeding Risk", 
+        f"{data['bleeding_risk']:.1f}%", 
+        "High" if data['bleeding_risk'] > 50 else "Normal", 
+        delta_color="inverse",
+        help="Probability of major hemorrhage based on XGBoost model (Inputs: INR, Age, History of GI Bleed, Anticoagulants)."
+    )
+    
+    m2.metric(
+        "AKI Risk", 
+        f"{data['aki_risk']}%", 
+        "Critical" if data['aki_risk'] > 50 else "Normal", 
+        delta_color="inverse",
+        help="Acute Kidney Injury Risk based on KDIGO criteria (Creatinine levels, Nephrotoxic meds, Age)."
+    )
+    
+    m3.metric(
+        "Sepsis Score", 
+        f"{data.get('sepsis_risk', 0)}", 
+        "High" if data.get('sepsis_risk', 0) >= 2 else "Normal", 
+        delta_color="inverse",
+        help="qSOFA Score (Quick Sepsis Related Organ Failure Assessment). 1 point each for: Hypotension (SBP<100), Tachypnea (RR>22), Altered Mental Status. Score ≥2 suggests high sepsis risk."
+    )
+    
+    m4.metric(
+        "Hypoglycemia", 
+        "YES" if data.get('hypo_risk', 0) > 0 else "NO", 
+        "Critical" if data.get('hypo_risk', 0) > 0 else "Normal", 
+        delta_color="inverse",
+        help="Critical Alert triggered if Blood Glucose < 70 mg/dL or recent insulin event."
+    )
     
     st.divider()
     
