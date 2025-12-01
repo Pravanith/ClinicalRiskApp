@@ -161,10 +161,9 @@ def render_risk_calculator():
             submitted = st.form_submit_button("🚀 Run Clinical Analysis", type="primary", use_container_width=True)
 
             if submitted:
-                # Pre-Processing
+                # --- 1. Pre-Processing ---
                 final_temp_c = (temp_input - 32) * 5/9 if temp_scale == "°F" else temp_input
                 
-                # Handle 0 BP (Prevent division by zero in logic if needed, though formula handles 0 fine)
                 if sys_bp > 0:
                     map_val = (sys_bp + (2 * dia_bp)) / 3 
                 else:
@@ -172,15 +171,16 @@ def render_risk_calculator():
                 
                 is_high_bp = 1 if sys_bp > 140 else 0
 
-                # AI Prediction
+                # --- 2. AI Prediction (XGBoost) ---
                 input_df = pd.DataFrame({
                     'age': [age], 'inr': [inr], 'anticoagulant': [1 if anticoag else 0],
                     'gi_bleed': [1 if gi_bleed else 0], 'high_bp': [is_high_bp],
                     'antiplatelet': [0], 'gender_female': [1 if gender == "Female" else 0],
                     'weight': [weight_kg], 'liver_disease': [1 if liver_disease else 0]
                 })
-                
                 pred_bleeding = bleeding_model.predict(input_df)[0]
+
+                # --- 3. Clinical Rules (Backend) ---
                 pred_aki = bk.calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
                 pred_sepsis = bk.calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
                 pred_hypo = bk.calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
@@ -195,24 +195,41 @@ def render_risk_calculator():
                 if nsaid or anticoag: has_bled += 1
                 
                 status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis >= 2) else 'Stable'
-                bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
 
-                st.session_state['analysis_results'] = {
-                    'pred_bleeding': pred_bleeding, 'pred_aki': pred_aki,
-                    'pred_sepsis': pred_sepsis, 'pred_hypo': pred_hypo,
-                    'has_bled': has_bled, 'map_val': map_val, 'sirs_score': sirs_score,
-                    'status': status_calc,
-                    # Vitals
-                    'age': age, 'bmi': bmi, 'sys_bp': sys_bp, 'dia_bp': dia_bp,
+                # --- 4. SAVE TO GLOBAL SESSION STATE (For Dashboard & AI) ---
+                # This is the magic glue that connects Calculator -> Dashboard -> AI
+                st.session_state['patient_data'] = {
+                    'id': f"Patient-{age}-{int(sys_bp)}", 
+                    'age': age,
+                    'gender': gender,
+                    'weight': weight_kg,
+                    'sys_bp': sys_bp, 'dia_bp': dia_bp,
                     'hr': hr, 'resp_rate': resp_rate, 'temp_c': final_temp_c, 'o2_sat': o2_sat,
-                    'pain': pain,
-                    # Labs
-                    'creat': creat, 'potassium': potassium, 'inr': inr, 'bun': bun,
-                    'wbc': wbc, 'hgb': hgb, 'platelets': platelets, 'lactate': lactate,
-                    'glucose': glucose
+                    'creat': creat, 'potassium': potassium, 'inr': inr, 'glucose': glucose,
+                    'bleeding_risk': float(pred_bleeding),
+                    'aki_risk': int(pred_aki),
+                    'sepsis_risk': int(pred_sepsis),
+                    'hypo_risk': int(pred_hypo),
+                    'sirs_score': sirs_score,
+                    'status': status_calc,
+                    'timestamp': str(pd.Timestamp.now())
                 }
 
-    st.divider() 
+                # --- 5. Save to Database ---
+                bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
+
+                # --- 6. Save to Local Results (For this page's view) ---
+                st.session_state['analysis_results'] = {
+                    **st.session_state['patient_data'], # Inherit everything above
+                    'has_bled': has_bled,
+                    'map_val': map_val,
+                    'bmi': bmi,
+                    'pain': pain,
+                    # Ensure all labs are here for alerts
+                    'wbc': wbc, 'hgb': hgb, 'platelets': platelets, 'lactate': lactate, 'bun': bun
+                }
+
+    st.divider()
 
     # --- RESULTS CONTAINER ---
     if 'analysis_results' in st.session_state:
@@ -347,117 +364,104 @@ def render_history_sql():
     else:
         st.info("📭 Database is empty. Run a Risk Analysis to create records.")
 
-# --- MODULE 3: LIVE DASHBOARD (OPTIMIZED FLOW) ---
+# --- MODULE 3: LIVE DASHBOARD (LINKED TO CALCULATOR) ---
 def render_dashboard():
-    data = st.session_state['patient_data']
+    # 1. GET DATA FROM SESSION STATE
+    # This grabs the exact values you just entered in the Risk Calculator
+    data = st.session_state.get('patient_data', {})
+    
+    # Default values if no analysis has been run yet
+    if not data:
+        st.warning("⚠️ No patient data found. Please run the Risk Calculator first.")
+        return
+
     is_critical = data.get('status') == 'Critical'
     
-    # --- HEADER ---
-    st.subheader(f"🖥️ ICU Monitor: {data.get('id', 'Unknown')}")
-    
-    # --- ACTION BAR (Generate & Download) ---
-    # We use columns to put the buttons side-by-side
-    c1, c2, c3 = st.columns([1, 1, 2])
-    
+    # --- HEADER & AI BUTTON ---
+    c1, c2 = st.columns([3, 1])
     with c1:
-        # STEP 1: GENERATE BUTTON
-        if st.button("✨ Generate Discharge Note", type="primary"):
-            with st.spinner("Consulting Gemini 2.0..."):
-                # Call backend
-                ai_summary = bk.generate_discharge_summary(data)
-                # Save to session state
-                st.session_state['latest_discharge_note'] = ai_summary
+        st.subheader(f"🛏️ Bedside Monitor: {data.get('id', 'Unknown')}")
+        st.caption(f"Status: **{data.get('status', 'Unknown')}**")
     
     with c2:
-        # STEP 2: DOWNLOAD BUTTON (Only appears if note exists)
+        # AI DISCHARGE SUMMARY (Now uses the real data)
+        if st.button("✨ Generate Discharge Note", type="primary"):
+            with st.spinner("Consulting Gemini 2.0..."):
+                ai_summary = bk.generate_discharge_summary(data)
+                st.session_state['latest_discharge_note'] = ai_summary
+        
         if 'latest_discharge_note' in st.session_state:
             st.download_button(
-                label="📥 Download as .txt",
+                label="📥 Download Note",
                 data=st.session_state['latest_discharge_note'],
                 file_name=f"discharge_{data.get('id')}.txt",
                 mime="text/plain"
             )
             
-    # --- PREVIEW AREA (New!) ---
-    # This shows the note immediately so the doctor can read it before downloading
+    # --- PREVIEW AREA (View Generated Summary) ---
     if 'latest_discharge_note' in st.session_state:
         with st.expander("📄 View Generated Summary", expanded=True):
             st.text_area("Edit before downloading:", value=st.session_state['latest_discharge_note'], height=200)
 
     st.divider()
 
-    # --- METRICS ---
-    m1, m2, m3, m4 = st.columns(4)
-    
-    m1.metric(
-        "Bleeding Risk", 
-        f"{data.get('bleeding_risk', 0):.1f}%", 
-        "High" if data.get('bleeding_risk', 0) > 50 else "Normal", 
-        delta_color="inverse",
-        help="Probability of major hemorrhage based on XGBoost model."
-    )
-    
-    m2.metric(
-        "AKI Risk", 
-        f"{data.get('aki_risk', 0)}%", 
-        "Critical" if data.get('aki_risk', 0) > 50 else "Normal", 
-        delta_color="inverse",
-        help="Acute Kidney Injury Risk based on KDIGO criteria."
-    )
-    
-    m3.metric(
-        "Sepsis Score", 
-        f"{data.get('sepsis_risk', 0)}", 
-        "High" if data.get('sepsis_risk', 0) >= 2 else "Normal", 
-        delta_color="inverse",
-        help="qSOFA Score (0-3). ≥2 indicates high sepsis risk."
-    )
-    
-    m4.metric(
-        "Hypoglycemia", 
-        "YES" if data.get('hypo_risk', 0) > 0 else "NO", 
-        "Critical" if data.get('hypo_risk', 0) > 0 else "Normal", 
-        delta_color="inverse",
-        help="Blood Glucose Critical Alert (<70 mg/dL)."
-    )
-    
-    st.divider()
-    
-    # --- CHARTS ---
-    col_main, col_queue = st.columns([2.5, 1])
-    with col_main:
-        st.markdown("### 📉 Live Telemetry (HR vs BP)")
-        base_hr = 110 if is_critical else 75
-        base_bp = 90 if is_critical else 120
+    # --- REAL-TIME VITALS PANEL (Uses Real Inputs) ---
+    with st.container(border=True):
+        st.markdown("#### 📉 Real-Time Telemetry")
+        col_chart, col_vitals = st.columns([3, 1])
         
-        hr_data = [base_hr + np.random.randint(-10, 15) for _ in range(10)]
-        bp_data = [base_bp + np.random.randint(-5, 10) for _ in range(10)]
-        
-        chart_df = pd.DataFrame({
-            'Time': list(range(-9, 1)),
-            'Heart Rate': hr_data,
-            'Systolic BP': bp_data
-        }).melt('Time', var_name='Metric', value_name='Value')
+        with col_chart:
+            # Simulate a live trace based on the INPUT BP and HR
+            # We add small random noise to make it look "live" but centered on your inputs
+            base_sbp = data.get('sys_bp', 120)
+            base_hr = data.get('hr', 80)
+            
+            chart_data = pd.DataFrame({
+                'Time': range(20),
+                'Systolic BP': np.random.normal(base_sbp, 2, 20), # Jitters around input BP
+                'Heart Rate': np.random.normal(base_hr, 2, 20)    # Jitters around input HR
+            }).melt('Time', var_name='Metric', value_name='Value')
+            
+            c = alt.Chart(chart_data).mark_line(interpolate='basis', strokeWidth=3).encode(
+                x=alt.X('Time', axis=None),
+                y=alt.Y('Value', scale=alt.Scale(zero=False)), # Auto-scale to show movement
+                color=alt.Color('Metric', scale=alt.Scale(range=['#FF4B4B', '#00CC96']))
+            ).properties(height=200)
+            
+            st.altair_chart(c, use_container_width=True)
 
-        domain = ['Heart Rate', 'Systolic BP']
-        range_ = ['#00E5FF', '#FF1744']
-        
-        c = alt.Chart(chart_df).mark_line(interpolate='monotone', point=True, strokeWidth=3).encode(
-            x=alt.X('Time', axis=alt.Axis(title='Time (Hours)')),
-            y=alt.Y('Value', scale=alt.Scale(domain=[40, 180])),
-            color=alt.Color('Metric', scale=alt.Scale(domain=domain, range=range_))
-        ).properties(height=350)
-        
-        st.altair_chart(c, use_container_width=True)
-        
-        if is_critical:
-            st.error("🚨 **CRITICAL ALERT:** Vitals unstable.")
-        else:
-            st.success("✅ **STABLE:** Vitals trending normal.")
+        with col_vitals:
+            # Display the EXACT numbers entered
+            st.markdown(f"""
+            <div style="background-color:#0E1117; padding:15px; border-radius:10px; text-align:center; border: 1px solid #333;">
+                <h3 style="color:#FF4B4B; margin:0;">{int(data.get('sys_bp', 0))}</h3>
+                <p style="color:gray; font-size:12px; margin:0;">mmHg (SBP)</p>
+                <hr style="margin: 10px 0; border-color:#333;">
+                <h3 style="color:#00CC96; margin:0;">{int(data.get('hr', 0))}</h3>
+                <p style="color:gray; font-size:12px; margin:0;">BPM (HR)</p>
+                <hr style="margin: 10px 0; border-color:#333;">
+                <h3 style="color:#00A6ED; margin:0;">{int(data.get('o2_sat', 0))}%</h3>
+                <p style="color:gray; font-size:12px; margin:0;">SpO2</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-    with col_queue:
-        st.markdown("#### 📋 Patient Status")
-        st.info(f"Current Status: {data.get('status', 'Unknown')}")
+    # --- RISK METRICS (From Analysis) ---
+    st.markdown("#### ⚠️ Risk Stratification")
+    r1, r2, r3, r4 = st.columns(4)
+    
+    r1.metric("🩸 Bleeding Risk", f"{data.get('bleeding_risk', 0):.1f}%", 
+              "High" if data.get('bleeding_risk', 0) > 50 else "Normal", delta_color="inverse",
+              help="Probability of major hemorrhage based on XGBoost model.")
+    
+    r2.metric("💧 AKI Risk", f"{data.get('aki_risk', 0)}%", 
+              "Critical" if data.get('aki_risk', 0) > 50 else "Normal", delta_color="inverse",
+              help="Acute Kidney Injury Risk based on KDIGO criteria.")
+    
+    r3.metric("🦠 Sepsis Score", f"{data.get('sepsis_risk', 0)}", 
+              "Alert" if data.get('sepsis_risk', 0) >= 2 else "Normal", delta_color="inverse",
+              help="qSOFA Score (0-3). ≥2 indicates high sepsis risk.")
+    
+    r4.metric("🌡️ Temp", f"{data.get('temp_c', 37.0):.1f}°C", "Fever" if data.get('temp_c', 37) > 38 else "Normal", delta_color="inverse")
 # --- MODULE 4: BATCH ANALYSIS (CSV) ---
 def render_batch_analysis():
     st.subheader("Bulk Patient Processing & Diagnostic Triage")
