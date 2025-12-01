@@ -48,17 +48,19 @@ def render_cover_page():
         st.session_state['entered_app'] = True
         st.rerun()
 
-# --- MODULE 1: RISK CALCULATOR (TABBED INTERFACE) ---
+# --- MODULE 1: RISK CALCULATOR (TAB-LESS / SCROLLABLE) ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator (Advanced)")
     
-    # Create Tabs for cleaner layout
-    tab1, tab2 = st.tabs(["📝 Patient Data Entry", "📊 Analysis & Results"])
-    
-    # --- TAB 1: INPUTS ---
-    with tab1:
+    # --- INPUTS CONTAINER ---
+    with st.container(border=True):
+        st.markdown("#### 📝 Patient Data Entry")
+        
+        # Use a form to capture all inputs cleanly
         with st.form("risk_form"):
-            st.markdown("#### 1. Patient Demographics")
+            
+            # --- 1. Demographics ---
+            st.markdown("##### 1. Patient Demographics")
             c1, c2, c3, c4 = st.columns(4)
             age = c1.number_input("Age", min_value=0, max_value=120, value=0)
             gender = c2.selectbox("Gender", ["Male", "Female"])
@@ -83,7 +85,8 @@ def render_risk_calculator():
                 bmi = 0.0
                 p1.caption("Enter Height for BMI")
 
-            st.markdown("#### 2. Vital Signs & Observations")
+            # --- 2. Vital Signs ---
+            st.markdown("##### 2. Vital Signs & Observations")
             v1, v2, v3, v4 = st.columns(4)
             sys_bp = v1.number_input("Systolic BP (mmHg)", min_value=0, max_value=300, value=0)
             dia_bp = v2.number_input("Diastolic BP (mmHg)", min_value=0, max_value=200, value=0)
@@ -100,7 +103,8 @@ def render_risk_calculator():
             glucose = v7.number_input("Fingerstick Glucose (mg/dL)", min_value=0, max_value=600, value=0)
             pain = v8.slider("Pain Score (VAS)", 0, 10, 0)
 
-            st.markdown("#### 3. Laboratory Values")
+            # --- 3. Laboratory Values ---
+            st.markdown("##### 3. Laboratory Values")
             l1, l2, l3, l4 = st.columns(4)
             creat = l1.number_input("Creatinine (mg/dL)", min_value=0.0, max_value=20.0, value=0.0)
             potassium = l2.number_input("Potassium (K+)", min_value=0.0, max_value=10.0, value=0.0)
@@ -113,7 +117,8 @@ def render_risk_calculator():
             platelets = l7.number_input("Platelets (10^9/L)", min_value=0, max_value=1000, value=0)
             lactate = l8.number_input("Lactate (mmol/L)", min_value=0.0, max_value=20.0, value=0.0)
 
-            st.markdown("#### 4. Comorbidities & Medications")
+            # --- 4. Comorbidities & Medications ---
+            st.markdown("##### 4. Comorbidities & Medications")
             m1, m2, m3, m4 = st.columns(4)
             anticoag = m1.checkbox("Anticoagulant (Blood Thinner)")
             nsaid = m2.checkbox("NSAID Use (e.g., Ibuprofen)") 
@@ -133,112 +138,115 @@ def render_risk_calculator():
 
             submitted = st.form_submit_button("Run Clinical Analysis", type="primary")
 
-    # LOGIC (Triggered only on Submit)
-    if submitted:
-        # Pre-Processing
-        final_temp_c = (temp_input - 32) * 5/9 if temp_scale == "°F" else temp_input
-        map_val = (sys_bp + (2 * dia_bp)) / 3 if sys_bp > 0 else 0
+            if submitted:
+                # Pre-Processing
+                final_temp_c = (temp_input - 32) * 5/9 if temp_scale == "°F" else temp_input
+                map_val = (sys_bp + (2 * dia_bp)) / 3 if sys_bp > 0 else 0
 
-        # Calculations
-        is_high_bp = 1 if sys_bp > 140 else 0
-        input_df = pd.DataFrame({
-            'age': [age], 'inr': [inr], 
-            'anticoagulant': [1 if anticoag else 0],
-            'gi_bleed': [1 if gi_bleed else 0], 
-            'high_bp': [is_high_bp],
-            'antiplatelet': [0], 
-            'gender_female': [1 if gender == "Female" else 0],
-            'weight': [weight_kg], 
-            'liver_disease': [1 if liver_disease else 0]
-        })
+                # Calculations (Same as before)
+                is_high_bp = 1 if sys_bp > 140 else 0
+                input_df = pd.DataFrame({
+                    'age': [age], 'inr': [inr], 
+                    'anticoagulant': [1 if anticoag else 0],
+                    'gi_bleed': [1 if gi_bleed else 0], 
+                    'high_bp': [is_high_bp],
+                    'antiplatelet': [0], 
+                    'gender_female': [1 if gender == "Female" else 0],
+                    'weight': [weight_kg], 
+                    'liver_disease': [1 if liver_disease else 0]
+                })
+                
+                pred_bleeding = bleeding_model.predict(input_df)[0]
+                pred_aki = bk.calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
+                pred_sepsis = bk.calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
+                pred_hypo = bk.calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
+                sirs_score = bk.calculate_sirs_score(final_temp_c, hr, resp_rate, wbc)
+
+                has_bled = 0
+                if sys_bp > 160: has_bled += 1
+                if creat > 2.2 or liver_disease: has_bled += 1
+                if gi_bleed: has_bled += 1
+                if inr > 1.0: has_bled += 1
+                if age > 65: has_bled += 1
+                if nsaid or anticoag: has_bled += 1
+                
+                # Database & Session State Save
+                status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis >= 2) else 'Stable'
+                bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
+
+                st.session_state['analysis_results'] = {
+                    'pred_bleeding': pred_bleeding,
+                    'pred_aki': pred_aki,
+                    'pred_sepsis': pred_sepsis,
+                    'pred_hypo': pred_hypo,
+                    'has_bled': has_bled,
+                    'map_val': map_val,
+                    'sirs_score': sirs_score,
+                    'age': age, 'bmi': bmi, 'sys_bp': sys_bp,
+                    'creat': creat, 'potassium': potassium,
+                    'pain': pain, 'o2_sat': o2_sat,
+                    'status': status_calc # Save status for consistency
+                }
+                
+    st.divider() # Separate inputs from results
+
+    # --- RESULTS CONTAINER (Only shows after submission) ---
+    if 'analysis_results' in st.session_state:
+        res = st.session_state['analysis_results']
         
-        pred_bleeding = bleeding_model.predict(input_df)[0]
-        pred_aki = bk.calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
-        pred_sepsis = bk.calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
-        pred_hypo = bk.calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
-        sirs_score = bk.calculate_sirs_score(final_temp_c, hr, resp_rate, wbc)
-
-        has_bled = 0
-        if sys_bp > 160: has_bled += 1
-        if creat > 2.2 or liver_disease: has_bled += 1
-        if gi_bleed: has_bled += 1
-        if inr > 1.0: has_bled += 1
-        if age > 65: has_bled += 1
-        if nsaid or anticoag: has_bled += 1
+        st.markdown("### 📊 Analysis & Results")
         
-        # Save to Database
-        status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis > 50) else 'Stable'
-        bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
+        st.markdown("#### 1. Risk Stratification")
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("🩸 Bleeding Risk", f"{res['pred_bleeding']:.1f}%", help="Predicted by XGBoost Model")
+        r2.metric("💧 AKI Risk", f"{res['pred_aki']}%", help="Rule-based calculation (KDIGO)")
+        r3.metric("🦠 Sepsis Score", f"{res['pred_sepsis']}", help="qSOFA Score (0-3)")
+        r4.metric("📉 HAS-BLED", f"{res['has_bled']}/9", "High" if res['has_bled'] >=3 else "Low", help="AFib Bleeding Risk")
 
-        # Save Results to Session State
-        st.session_state['analysis_results'] = {
-            'pred_bleeding': pred_bleeding,
-            'pred_aki': pred_aki,
-            'pred_sepsis': pred_sepsis,
-            'pred_hypo': pred_hypo,
-            'has_bled': has_bled,
-            'map_val': map_val,
-            'sirs_score': sirs_score,
-            'age': age, 'bmi': bmi, 'sys_bp': sys_bp,
-            'creat': creat, 'potassium': potassium,
-            'pain': pain, 'o2_sat': o2_sat
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("MAP", f"{int(res['map_val'])} mmHg", help="Mean Arterial Pressure")
+        d2.metric("SIRS Score", f"{res['sirs_score']}/4", help="Inflammatory Response Score")
+        d3.metric("BMI", f"{res['bmi']:.1f}")
+        d4.metric("Pain", f"{res['pain']}/10")
+
+        st.divider()
+        
+        # Detailed Alerts (AI Assessment)
+        st.markdown("### ⚠️ Clinical Alerts & AI Assessment")
+        
+        # A. Protocol Alerts
+        if res['bmi'] >= 40: st.error(f"MORBID OBESITY (BMI {res['bmi']:.1f})")
+        if res['potassium'] > 5.5: st.error(f"CRITICAL HYPERKALEMIA (K+ {res['potassium']})")
+        if res['creat'] > 3.0: st.error(f"ACUTE RENAL FAILURE (Cr {res['creat']})")
+        if res['sys_bp'] > 180: st.error(f"HYPERTENSIVE CRISIS (BP {res['sys_bp']})")
+        if res['pred_sepsis'] >= 2: st.error("🚨 SEPSIS ALERT: qSOFA ≥ 2")
+        
+        if (res['potassium'] < 5.5 and res['sys_bp'] < 180 and res['creat'] < 3.0 and res['pred_sepsis'] < 2):
+                st.success("✅ No immediate Life-Threatening Protocol violations detected.")
+
+        st.divider()
+
+        # B. AI Analysis
+        st.markdown("#### 🤖 AI Consultant Analysis")
+        ai_context = {
+            'age': res['age'], 'sbp': res['sys_bp'], 'creat': res['creat'],
+            'bleeding_risk': float(res['pred_bleeding']),
+            'aki_risk': int(res['pred_aki']), 'sepsis_risk': int(res['pred_sepsis']),
+            'status': res['status']
         }
-        st.success("Analysis Complete! Switch to the 'Analysis & Alerts' tab.")
+        
+        if st.button("⚡ Generate AI Clinical Assessment"):
+            with st.spinner("Consulting Medical AI..."):
+                ai_analysis = bk.consult_ai_doctor(
+                    role='risk_assessment', 
+                    user_input="", 
+                    patient_context=ai_context
+                )
+                st.markdown(ai_analysis)
+                st.caption("⚠️ AI-Generated Insight. Verify with clinical protocols.")
 
-    # --- TAB 2: RESULTS ---
-    with tab2:
-        if 'analysis_results' in st.session_state:
-            res = st.session_state['analysis_results']
-            
-            st.markdown("#### 📊 Risk Stratification")
-            r1, r2, r3, r4 = st.columns(4)
-            r1.metric("🩸 Bleeding Risk", f"{res['pred_bleeding']:.1f}%", help="Predicted by XGBoost Model")
-            r2.metric("💧 AKI Risk", f"{res['pred_aki']}%", help="Rule-based calculation (KDIGO)")
-            r3.metric("🦠 Sepsis Score", f"{res['pred_sepsis']}", help="qSOFA Score (0-3)")
-            r4.metric("📉 HAS-BLED", f"{res['has_bled']}/9", "High" if res['has_bled'] >=3 else "Low", help="AFib Bleeding Risk")
-
-            d1, d2, d3, d4 = st.columns(4)
-            d1.metric("MAP", f"{int(res['map_val'])} mmHg", help="Mean Arterial Pressure")
-            d2.metric("SIRS Score", f"{res['sirs_score']}/4", help="Inflammatory Response Score")
-            d3.metric("BMI", f"{res['bmi']:.1f}")
-            d4.metric("Pain", f"{res['pain']}/10")
-
-            st.divider()
-            
-            # Detailed Alerts (AI Assessment)
-            st.markdown("### ⚠️ Clinical Alerts & AI Assessment")
-            
-            # A. Protocol Alerts
-            if res['bmi'] >= 40: st.error(f"MORBID OBESITY (BMI {res['bmi']:.1f})")
-            if res['potassium'] > 5.5: st.error(f"CRITICAL HYPERKALEMIA (K+ {res['potassium']})")
-            if res['creat'] > 3.0: st.error(f"ACUTE RENAL FAILURE (Cr {res['creat']})")
-            if res['sys_bp'] > 180: st.error(f"HYPERTENSIVE CRISIS (BP {res['sys_bp']})")
-            if res['pred_sepsis'] >= 2: st.error("🚨 SEPSIS ALERT: qSOFA ≥ 2")
-            
-            if (res['potassium'] < 5.5 and res['sys_bp'] < 180 and res['creat'] < 3.0):
-                    st.success("✅ No immediate Life-Threatening Protocol violations detected.")
-
-            st.divider()
-
-            # B. AI Analysis
-            st.markdown("#### 🤖 AI Consultant Analysis")
-            ai_context = {
-                'age': res['age'], 'sbp': res['sys_bp'], 'creat': res['creat'],
-                'bleeding_risk': float(res['pred_bleeding']),
-                'aki_risk': int(res['pred_aki']), 'sepsis_risk': int(res['pred_sepsis'])
-            }
-            
-            if st.button("⚡ Generate AI Clinical Assessment"):
-                with st.spinner("Consulting Medical AI..."):
-                    ai_analysis = bk.consult_ai_doctor(
-                        role='risk_assessment', 
-                        user_input="", 
-                        patient_context=ai_context
-                    )
-                    st.markdown(ai_analysis)
-                    st.caption("⚠️ AI-Generated Insight. Verify with clinical protocols.")
-        else:
-            st.info("👈 Please fill out the form in the 'Patient Data Entry' tab and click Run.")
+    else:
+        st.info("👈 Fill out the patient data form above and click 'Run Clinical Analysis' to see results.")
 # --- MODULE 2: PATIENT HISTORY (SQL) ---
 def render_history_sql():
     st.subheader("🗄️ Patient History Database")
