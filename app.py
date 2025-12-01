@@ -446,7 +446,7 @@ def render_dashboard():
               help="qSOFA Score (0-3). ≥2 indicates high sepsis risk.")
     
     r4.metric("🌡️ Temp", f"{data.get('temp_c', 37.0):.1f}°C", "Fever" if data.get('temp_c', 37) > 38 else "Normal", delta_color="inverse")
-# --- MODULE 4: BATCH ANALYSIS (CSV) ---
+# --- MODULE 4: BATCH ANALYSIS (SMART VALIDATION & NEWS-2) ---
 def render_batch_analysis():
     st.subheader("Bulk Patient Processing & Diagnostic Triage")
     
@@ -456,7 +456,7 @@ def render_batch_analysis():
             'Age': [65, 72], 'Gender': ['Male', 'Female'], 'Weight_kg': [80, 65],
             'Systolic_BP': [130, 90], 'Diastolic_BP': [80, 50], 'Heart_Rate': [72, 110],
             'Resp_Rate': [16, 24], 'Temp_C': [37.0, 38.5], 'O2_Sat': [98, 92],
-            'WBC': [6.0, 15.0], 'Glucose': [110, 85], 'Creatinine': [1.1, 2.5],
+            'WBC': [6.0, 15.0], 'Glucose': [110, 5.5], 'Creatinine': [1.1, 150], # Mixed units demo
             'INR': [1.0, 1.2], 'Altered_Mental': [0, 1], 'Anticoagulant': [1, 0],
             'Heart_Failure': [0, 1], 'Liver_Disease': [0, 0], 'Hx_GI_Bleed': [0, 0]
         }
@@ -464,70 +464,130 @@ def render_batch_analysis():
         csv_template = df_sample.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Download Template", csv_template, "patient_data.csv", "text/csv")
 
-    tab1, tab2 = st.tabs(["📄 Diagnostic Processor", "🖼️ Medical Imaging"])
+    # 2. CSV PROCESSOR
+    st.markdown("#### 📤 Upload Patient Batch")
+    uploaded_csv = st.file_uploader("Upload Patient Data (CSV)", type=["csv"])
     
-    # --- TAB 1: CSV PROCESSOR ---
-    with tab1:
-        uploaded_csv = st.file_uploader("Upload Patient Data (CSV)", type=["csv"])
-        if uploaded_csv:
-            try:
-                raw_df = pd.read_csv(uploaded_csv)
-                
-                # A. Smart Column Mapping
-                col_map = {
-                    'sbp':'Systolic_BP', 'hr':'Heart_Rate', 'rr':'Resp_Rate', 'temp':'Temp_C',
-                    'spo2':'O2_Sat', 'cr':'Creatinine', 'wbc':'WBC', 'glu':'Glucose'
-                }
-                df = raw_df.rename(columns=lambda x: col_map.get(x.lower(), x))
-                
-                # B. Fill Missing
-                req_cols = ['Age','Systolic_BP','Diastolic_BP','Heart_Rate','Resp_Rate','Temp_C','WBC','Creatinine']
-                for c in req_cols:
-                    if c not in df.columns: df[c] = 0
-                
-                if st.button("⚡ Run AI Diagnostic Engine", type="primary"):
-                    # 1. AI Predictions
-                    inputs = pd.DataFrame()
-                    inputs['age'] = df.get('Age', 0)
-                    inputs['inr'] = df.get('INR', 1.0)
-                    inputs['anticoagulant'] = df.get('Anticoagulant', 0)
-                    inputs['gi_bleed'] = df.get('Hx_GI_Bleed', 0)
-                    inputs['high_bp'] = df['Systolic_BP'].apply(lambda x: 1 if x > 140 else 0)
-                    inputs['antiplatelet'] = 0
-                    inputs['gender_female'] = 0 
-                    inputs['weight'] = df.get('Weight_kg', 70)
-                    inputs['liver_disease'] = df.get('Liver_Disease', 0)
+    if uploaded_csv:
+        try:
+            raw_df = pd.read_csv(uploaded_csv)
+            
+            # --- A. SMART MAPPING ---
+            col_map = {
+                'sbp':'Systolic_BP', 'sys':'Systolic_BP', 'hr':'Heart_Rate', 'rr':'Resp_Rate', 'temp':'Temp_C',
+                'spo2':'O2_Sat', 'cr':'Creatinine', 'wbc':'WBC', 'glu':'Glucose', 'sugar':'Glucose'
+            }
+            df = raw_df.rename(columns=lambda x: col_map.get(x.lower(), x))
+            
+            # Fill missing with safe defaults for calculation
+            req_cols = ['Age','Systolic_BP','Heart_Rate','Resp_Rate','Temp_C','O2_Sat','Creatinine','Glucose']
+            for c in req_cols:
+                if c not in df.columns: df[c] = 0
+
+            if st.button("⚡ Run Clinical Analysis", type="primary"):
+                with st.spinner("Validating Data & Calculating Risks..."):
                     
-                    df['Bleed_Risk_%'] = bleeding_model.predict(inputs)
+                    # --- B. SMART UNIT CONVERSION & VALIDATION ---
+                    def clean_row(row):
+                        # 1. Glucose: Convert mmol/L (e.g., 5.5) to mg/dL (e.g., 100)
+                        # Threshold: If Glucose < 30, assume mmol/L and multiply by 18
+                        if 0 < row['Glucose'] < 30:
+                            row['Glucose'] = row['Glucose'] * 18
+                        
+                        # 2. Creatinine: Convert umol/L (e.g., 100) to mg/dL (e.g., 1.1)
+                        # Threshold: If Creatinine > 20, assume umol/L and divide by 88.4
+                        if row['Creatinine'] > 20:
+                            row['Creatinine'] = row['Creatinine'] / 88.4
+                            
+                        return row
                     
-                    # 2. Logic Diagnostics
+                    df = df.apply(clean_row, axis=1)
+
+                    # --- C. ADVANCED SCORING (NEWS-2) ---
+                    def calculate_news(row):
+                        score = 0
+                        # Resp Rate
+                        if row['Resp_Rate'] <= 8 or row['Resp_Rate'] >= 25: score += 3
+                        elif row['Resp_Rate'] >= 21: score += 2
+                        elif row['Resp_Rate'] <= 11: score += 1
+                        
+                        # SpO2
+                        if row['O2_Sat'] <= 91: score += 3
+                        elif row['O2_Sat'] <= 93: score += 2
+                        elif row['O2_Sat'] <= 95: score += 1
+                        
+                        # Systolic BP
+                        if row['Systolic_BP'] <= 90 or row['Systolic_BP'] >= 220: score += 3
+                        elif row['Systolic_BP'] <= 100: score += 2
+                        elif row['Systolic_BP'] <= 110: score += 1
+                        
+                        # Heart Rate
+                        if row['Heart_Rate'] <= 40 or row['Heart_Rate'] >= 131: score += 3
+                        elif row['Heart_Rate'] >= 111: score += 2
+                        elif row['Heart_Rate'] <= 50 or row['Heart_Rate'] >= 91: score += 1
+                        
+                        # Consciousness
+                        if row.get('Altered_Mental', 0) == 1: score += 3
+                        
+                        # Temp
+                        if row['Temp_C'] <= 35.0: score += 3
+                        elif row['Temp_C'] >= 39.1: score += 2
+                        elif row['Temp_C'] <= 36.0 or row['Temp_C'] >= 38.1: score += 1
+                        
+                        return score
+
+                    df['NEWS_Score'] = df.apply(calculate_news, axis=1)
+
+                    # --- D. DIAGNOSTIC LABELS ---
                     def get_status(row):
                         alerts = []
-                        qsofa = 0
-                        if row['Systolic_BP'] < 100: qsofa += 1
-                        if row['Resp_Rate'] > 22: qsofa += 1
-                        if row.get('Altered_Mental', 0) == 1: qsofa += 1
+                        # 1. NEWS-2 Interpretation
+                        if row['NEWS_Score'] >= 7: alerts.append("CRITICAL (NEWS ≥7)")
+                        elif row['NEWS_Score'] >= 5: alerts.append("Urgent (NEWS ≥5)")
                         
-                        if qsofa >= 2: alerts.append("SEPSIS ALERT")
-                        if row['Systolic_BP'] > 180: alerts.append("Hypertensive Crisis")
-                        if row['Creatinine'] > 2.0: alerts.append("Acute Kidney Injury")
-                        if row['WBC'] > 12: alerts.append("Leukocytosis")
+                        # 2. Specific Organ Failures
+                        if row['Systolic_BP'] > 180: alerts.append("HTN Crisis")
+                        if row['Creatinine'] > 2.0: alerts.append("AKI Warning")
+                        if row.get('WBC', 0) > 12: alerts.append("Leukocytosis")
                         
                         return " + ".join(alerts) if alerts else "Stable"
 
-                    df['Diagnosis'] = df.apply(get_status, axis=1)
+                    df['Clinical_Status'] = df.apply(get_status, axis=1)
                     
-                    # 3. Highlight
+                    # Run AI Prediction
+                    # (Create simple input df for the XGBoost model)
+                    model_inputs = pd.DataFrame()
+                    model_inputs['age'] = df.get('Age', 0)
+                    model_inputs['inr'] = df.get('INR', 1.0)
+                    model_inputs['anticoagulant'] = df.get('Anticoagulant', 0)
+                    model_inputs['gi_bleed'] = df.get('Hx_GI_Bleed', 0)
+                    model_inputs['high_bp'] = df['Systolic_BP'].apply(lambda x: 1 if x > 140 else 0)
+                    model_inputs['antiplatelet'] = 0
+                    model_inputs['gender_female'] = 0 
+                    model_inputs['weight'] = df.get('Weight_kg', 70)
+                    model_inputs['liver_disease'] = df.get('Liver_Disease', 0)
+                    
+                    df['Bleed_Risk_%'] = bleeding_model.predict(model_inputs)
+
+                    # --- E. DISPLAY ---
                     def color_rows(val):
-                        if 'SEPSIS' in str(val) or 'Crisis' in str(val): return 'background-color: #ffcdd2; color: black;'
-                        if 'Stable' in str(val): return 'background-color: #c8e6c9; color: black;'
+                        if 'CRITICAL' in str(val): return 'background-color: #ffcdd2; color: black; font-weight: bold;'
+                        if 'Urgent' in str(val) or 'Warning' in str(val): return 'background-color: #fff3cd; color: black;'
                         return ''
 
-                    st.dataframe(df[['Diagnosis', 'Age', 'Systolic_BP', 'Bleed_Risk_%']].style.map(color_rows, subset=['Diagnosis']), use_container_width=True)
+                    st.success(f"Processed {len(df)} records with enhanced validation.")
+                    st.dataframe(
+                        df[['Clinical_Status', 'NEWS_Score', 'Age', 'Systolic_BP', 'Bleed_Risk_%']]
+                        .style.map(color_rows, subset=['Clinical_Status']), 
+                        use_container_width=True
+                    )
                     
-            except Exception as e:
-                st.error(f"Error processing CSV: {e}")
-
+                    # Add download for the enhanced data
+                    csv_result = df.to_csv(index=False).encode('utf-8')
+                    st.download_button("📥 Download Analyzed Data", csv_result, "analyzed_patients.csv", "text/csv")
+                
+        except Exception as e:
+            st.error(f"Error processing CSV: {e}")
 # --- MODULE 5: MEDICATION CHECKER ---
 def render_medication_checker():
     st.subheader("Drug-Drug Interaction Checker")
