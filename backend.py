@@ -469,3 +469,36 @@ def get_latest_patient():
         return None
     except Exception as e:
         return None
+
+# ==========================================
+# 8. AI DISCHARGE SUMMARY (NEW)
+# ==========================================
+def generate_discharge_summary(patient_data):
+    import google.generativeai as genai
+    import streamlit as st
+
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        prompt = f"""
+        Act as a Hospitalist. Write a formal Hospital Discharge Summary for this patient:
+        
+        Patient Data:
+        - Age: {patient_data.get('age')}
+        - Diagnosis: {patient_data.get('status')} Risk Profile
+        - Bleeding Risk: {patient_data.get('bleeding_risk', 0):.1f}%
+        - AKI Risk: {patient_data.get('aki_risk', 0)}%
+        - Sepsis Score: {patient_data.get('sepsis_risk', 0)}
+        
+        Format as:
+        1. Assessment
+        2. Hospital Course (Summarize the risks identified)
+        3. Discharge Plan (Suggest 3 specific monitoring actions)
+        """
+        
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Error generating summary: {str(e)}"
