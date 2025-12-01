@@ -357,33 +357,50 @@ KNOWLEDGE_BASE = {
     "nkda": "No Known Drug Allergies."
 }
 
+# ==========================================
+# 5. HYBRID KNOWLEDGE BASE (DICTIONARY + AI)
+# ==========================================
 def chatbot_response(text):
     text = text.lower().strip()
     
-    # 1. SMART TRANSLATOR
+    # 1. SMART TRANSLATOR (Handle slang/typos first)
     synonyms = {
-        "type1": "type 1", "type2": "type 2",
-        "high bp": "hypertension", "high blood pressure": "hypertension",
-        "low bp": "hypotension", "low blood pressure": "hypotension",
-        "heart failure": "chf", "kidney failure": "ckd", "kidney injury": "aki",
-        "sugar": "glucose", "blood sugar": "glucose", "clot": "dvt",
-        "breathing problem": "copd", "shortness of breath": "sob",
-        "belly pain": "appendicitis", "stomach pain": "gerd",
-        "heart rate": "tachycardia", "temp": "fever", "temperature": "fever",
-        "heart attack": "mi", "stroke": "cva"
+        "high bp": "hypertension", "sugar": "glucose", "heart attack": "mi",
+        "stroke": "cva", "clot": "dvt", "kidney failure": "ckd"
     }
     for slang, term in synonyms.items():
         if slang in text:
             text = text.replace(slang, term)
-            
-    # 2. KNOWLEDGE BASE SEARCH
+
+    # 2. SEARCH LOCAL DICTIONARY (Deterministic - Safe)
+    # Sort keys by length to match "Diabetes Type 2" before "Diabetes"
     sorted_keys = sorted(KNOWLEDGE_BASE.keys(), key=len, reverse=True)
     for key in sorted_keys:
         if re.search(r'\b' + re.escape(key) + r'\b', text):
-            return f"**{key.upper()}**: {KNOWLEDGE_BASE[key]}"
-            
-    return "ℹ️ I didn't recognize that term. Try specific medical terms like 'Sepsis', 'Warfarin', 'INR', or 'Stroke'."
+            return f"**📚 GLOSSARY MATCH ({key.upper()}):**\n{KNOWLEDGE_BASE[key]}"
 
+    # 3. FALLBACK TO AI (Generative - Infinite)
+    # If not in our dictionary, ask Gemini to define it briefly.
+    try:
+        import google.generativeai as genai
+        import streamlit as st
+        
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        prompt = f"""
+        Define the medical term or concept: "{text}".
+        - Keep the definition concise (under 50 words).
+        - Use professional clinical language.
+        - If it's an abbreviation, expand it.
+        - If it's not a medical term, say "Term not recognized."
+        """
+        response = model.generate_content(prompt)
+        return f"**🧠 AI DEFINITION:**\n{response.text}"
+        
+    except:
+        return "ℹ️ Term not found in Glossary and AI is unavailable."
 # ==========================================
 # 6. AI DIAGNOSTIC ENGINE (UPDATED)
 # ==========================================
