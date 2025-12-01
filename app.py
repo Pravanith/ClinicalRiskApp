@@ -467,8 +467,8 @@ else:
             "Live Dashboard", 
             "Batch Analysis (CSV)", 
             "Medication Checker", 
-            "Clinical Chatbot",
-            "AI Diagnostician"
+            "📚 Medical Glossary",
+            "🧠 AI Clinical Consultant"
         ])
         st.info("v3.0 - AI Integrated")
 
