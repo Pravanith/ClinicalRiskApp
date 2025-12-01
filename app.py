@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import altair as alt
 import backend as bk
+import random
 
 # ---------------------------------------------------------
 # 1. PAGE CONFIGURATION (MUST BE FIRST!)
@@ -217,7 +218,10 @@ def render_risk_calculator():
         bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
         
         st.session_state['patient_data'] = {
-            'id': f"Patient-{age}-{int(sys_bp)}", 
+            'id': patient_id = f"PT-{random.randint(1000, 9999)}" 
+
+st.session_state['patient_data'] = {
+    'id': patient_id,, 
             'age': age, 'gender': gender, 'weight': weight_kg,
             'sys_bp': sys_bp, 'dia_bp': dia_bp, 'hr': hr, 'resp_rate': resp_rate, 
             'temp_c': temp_c, 'o2_sat': o2_sat, 'pain': pain,
