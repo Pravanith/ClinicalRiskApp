@@ -65,7 +65,7 @@ def render_cover_page():
         st.session_state['entered_app'] = True
         st.rerun()
 
-# --- MODULE 1: RISK CALCULATOR (FIXED NAME ERROR) ---
+# --- MODULE 1: RISK CALCULATOR (STRICT ZERO-BASE) ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator")
     
@@ -78,56 +78,72 @@ def render_risk_calculator():
             # Split Screen Layout
             col_left, col_right = st.columns([1, 1], gap="medium")
             
-            # --- LEFT COLUMN ---
+            # --- LEFT COLUMN: Demographics & Vitals ---
             with col_left:
                 st.markdown("##### 👤 Patient Profile")
                 l1, l2 = st.columns(2)
-                age = l1.number_input("Age (Years)", 18, 120, 65)
+                # FIXED: Default is now 0
+                age = l1.number_input("Age (Years)", min_value=0, max_value=120, value=0)
                 gender = l2.selectbox("Gender", ["Male", "Female"])
                 
                 w_val, w_unit = st.columns([2, 1]) 
-                weight_input = w_val.number_input("Weight", 0.0, 400.0, 80.0)
+                # FIXED: Default is now 0.0
+                weight_input = w_val.number_input("Weight", 0.0, 400.0, 0.0)
                 weight_scale = w_unit.selectbox("Unit", ["kg", "lbs"], key="w_unit")
                 
-                # Weight Calc
+                # Weight Calc Logic
                 weight_kg = weight_input * 0.453592 if weight_scale == "lbs" else weight_input
-                height = 170 
-                bmi = weight_kg / ((height/100)**2)
+                
+                # FIXED: Height default 0
+                height = st.number_input("Height (cm)", 0, 250, 0)
+                
+                if height > 0:
+                    bmi = weight_kg / ((height/100)**2)
+                else:
+                    bmi = 0.0
 
                 st.markdown("##### 🩺 Vitals")
                 v1, v2 = st.columns(2)
-                sys_bp = v1.number_input("Systolic BP (Normal: 110-120)", 0, 300, 120)
-                dia_bp = v2.number_input("Diastolic BP (Normal: 70-80)", 0, 200, 80)
+                # FIXED: Defaults are now 0
+                sys_bp = v1.number_input("Systolic BP (Normal: 110-120)", 0, 300, 0)
+                dia_bp = v2.number_input("Diastolic BP (Normal: 70-80)", 0, 200, 0)
                 
                 v3, v4 = st.columns(2)
-                hr = v3.number_input("Heart Rate (Normal: 60-100)", 0, 300, 80)
-                resp_rate = v4.number_input("Resp Rate (Normal: 12-20)", 0, 60, 18)
+                # FIXED: Defaults are now 0
+                hr = v3.number_input("Heart Rate (Normal: 60-100)", 0, 300, 0)
+                resp_rate = v4.number_input("Resp Rate (Normal: 12-20)", 0, 60, 0)
                 
                 v5, v6 = st.columns(2)
-                # Note: We named this variable 'temp_c' directly
-                temp_c = v5.number_input("Temp °C (Normal: 36.5-37.5)", 30.0, 45.0, 37.0, step=0.1)
-                o2_sat = v6.number_input("O2 Sat % (Normal: >95%)", 0, 100, 98)
+                # FIXED: Defaults are now 0.0
+                temp_c = v5.number_input("Temp °C (Normal: 36.5-37.5)", 0.0, 45.0, 0.0, step=0.1)
+                o2_sat = v6.number_input("O2 Sat % (Normal: >95%)", 0, 100, 0)
 
-            # --- RIGHT COLUMN ---
+            # --- RIGHT COLUMN: Labs & History ---
             with col_right:
                 st.markdown("##### 🧪 Critical Labs")
+                
+                # Row 1
                 lab1, lab2 = st.columns(2)
-                creat = lab1.number_input("Creatinine (0.6-1.2 mg/dL)", 0.0, 20.0, 1.0)
-                bun = lab2.number_input("Blood Urea Nitrogen (7-20)", 0, 100, 15)
+                # FIXED: Defaults are now 0.0 / 0
+                creat = lab1.number_input("Creatinine (0.6-1.2 mg/dL)", 0.0, 20.0, 0.0)
+                bun = lab2.number_input("Blood Urea Nitrogen (7-20)", 0, 100, 0)
                 
+                # Row 2
                 lab3, lab4 = st.columns(2)
-                potassium = lab3.number_input("Potassium (3.5-5.0 mmol/L)", 0.0, 10.0, 4.0)
-                glucose = lab4.number_input("Glucose (70-100 mg/dL)", 0, 1000, 100)
+                potassium = lab3.number_input("Potassium (3.5-5.0 mmol/L)", 0.0, 10.0, 0.0)
+                glucose = lab4.number_input("Glucose (70-100 mg/dL)", 0, 1000, 0)
                 
+                # Row 3
                 lab5, lab6 = st.columns(2)
-                wbc = lab5.number_input("WBC (4.5-11.0 10^9/L)", 0.0, 50.0, 6.0)
-                hgb = lab6.number_input("Hemoglobin (13.5-17.5 g/dL)", 0.0, 20.0, 14.0)
+                wbc = lab5.number_input("WBC (4.5-11.0 10^9/L)", 0.0, 50.0, 0.0)
+                hgb = lab6.number_input("Hemoglobin (13.5-17.5 g/dL)", 0.0, 20.0, 0.0)
                 
+                # Row 4
                 lab7, lab8 = st.columns(2)
-                platelets = lab7.number_input("Platelets (150-450 10^9/L)", 0, 1000, 250)
-                inr = lab8.number_input("INR (Clotting Time) [0.9-1.1]", 0.0, 10.0, 1.0)
+                platelets = lab7.number_input("Platelets (150-450 10^9/L)", 0, 1000, 0)
+                inr = lab8.number_input("INR (Clotting Time) [0.9-1.1]", 0.0, 10.0, 0.0)
                 
-                lactate = st.number_input("Lactate (Normal: < 2.0 mmol/L)", 0.0, 20.0, 1.0)
+                lactate = st.number_input("Lactate (Normal: < 2.0 mmol/L)", 0.0, 20.0, 0.0)
 
                 st.markdown("##### 📋 Medical History")
                 h1, h2 = st.columns(2)
@@ -140,7 +156,7 @@ def render_risk_calculator():
                 
                 altered_mental = st.checkbox("Altered Mental Status (Confusion)")
                 
-                # Defaults
+                # Default pain to 0
                 pain = 0
 
             # SUBMIT BUTTON
@@ -149,9 +165,8 @@ def render_risk_calculator():
 
     # --- LOGIC & RESULTS ---
     if submitted:
-        # 1. Pre-Processing (FIXED: Use temp_c directly)
-        final_temp_c = temp_c  # No conversion needed, input is already C
-        
+        # 1. Pre-Processing (Handle 0s to avoid division errors)
+        final_temp_c = temp_c 
         map_val = (sys_bp + (2 * dia_bp)) / 3 if sys_bp > 0 else 0
         is_high_bp = 1 if sys_bp > 140 else 0
         
@@ -186,7 +201,7 @@ def render_risk_calculator():
             'sirs_score': sirs_score, 'status': status_calc, 'map_val': map_val, 'bmi': bmi, 'has_bled': 0
         }
         
-        # Also set analysis_results for this view
+        # Sync local state
         st.session_state['analysis_results'] = st.session_state['patient_data']
 
     # --- RESULTS DISPLAY ---
@@ -207,10 +222,11 @@ def render_risk_calculator():
 
         st.divider()
         
-        # CLINICAL ALERTS (Detailed)
+        # CLINICAL ALERTS (With 0-Check Logic)
         st.markdown("### ⚠️ Clinical Alerts & AI Assessment")
         violations = 0 
         
+        # Check > 0 ensures defaults don't trigger "Low" alerts
         if res['o2_sat'] > 0 and res['o2_sat'] < 88: 
             st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%) - Secure Airway!")
             violations += 1
@@ -232,6 +248,10 @@ def render_risk_calculator():
         if res['potassium'] > 6.0:
             st.error(f"🚨 CRITICAL HYPERKALEMIA (K+ {res['potassium']})")
             violations += 1
+        
+        if res['sepsis_risk'] >= 2:
+             st.error("🚨 SEPSIS ALERT: qSOFA Score ≥ 2")
+             violations += 1
 
         if violations == 0:
             st.success("✅ No immediate Life-Threatening Protocol violations detected.")
