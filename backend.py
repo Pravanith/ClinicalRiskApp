@@ -519,3 +519,33 @@ def generate_discharge_summary(patient_data):
         return response.text
     except Exception as e:
         return f"Error generating summary: {str(e)}"
+        # ==========================================
+# 9. AI DRUG INTERACTION CHECKER (NEW)
+# ==========================================
+def analyze_drug_interactions(drug_list):
+    import google.generativeai as genai
+    import streamlit as st
+
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        prompt = f"""
+        Act as a Clinical Pharmacist. Analyze the following medication list for drug-drug interactions:
+        
+        Medications: {", ".join(drug_list)}
+        
+        Task:
+        1. Identify any significant interactions (Major/Moderate).
+        2. Explain the mechanism (e.g., CYP450 inhibition, additive pharmacodynamics).
+        3. Recommend management strategies (e.g., "Reduce dose of X", "Monitor potassium").
+        4. If no interactions exist, state "No significant interactions found."
+        
+        Format: Use bullet points. Keep it clinical and concise.
+        """
+        
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"⚠️ Error analyzing interactions: {str(e)}"
