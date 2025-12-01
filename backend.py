@@ -394,7 +394,7 @@ def chatbot_response(text):
 
     return "ℹ️ I didn't recognize that term. Try specific medical terms like 'Sepsis', 'Warfarin', 'INR', or 'Stroke'."
 # ==========================================
-# 6. AI DIAGNOSTIC ENGINE (WITH AUTO-DEBUGGER)
+# 6. AI DIAGNOSTIC ENGINE (REAL GEMINI INTEGRATION)
 # ==========================================
 def consult_ai_doctor(role, user_input, patient_context=None):
     import google.generativeai as genai
@@ -408,9 +408,9 @@ def consult_ai_doctor(role, user_input, patient_context=None):
 
     genai.configure(api_key=api_key)
     
-    # 2. Try to use the latest model
-    target_model = 'gemini-1.5-flash' 
-    model = genai.GenerativeModel(target_model)
+    # 2. USE THE MODEL WE FOUND IN YOUR LIST (The Fix)
+    # We switched from '1.5-flash' to '2.0-flash' based on your logs
+    model = genai.GenerativeModel('gemini-2.0-flash')
 
     # 3. Construct the Prompt
     if role == 'patient':
@@ -423,30 +423,21 @@ def consult_ai_doctor(role, user_input, patient_context=None):
         age = patient_context.get('age', 'Unknown')
         status = patient_context.get('status', 'Stable')
         bleed_risk = patient_context.get('bleeding_risk', 0)
+        aki_risk = patient_context.get('aki_risk', 0)
+        
         prompt = f"""
-        Expert Consult. Patient Age: {age}, Status: {status}, BleedRisk: {bleed_risk}. 
+        Expert Consult. 
+        Patient Context: Age {age}, Status {status}, BleedRisk {bleed_risk:.1f}%, AKI Risk {aki_risk}%.
         Observation: "{user_input}"
-        Task: Differential diagnosis and treatment plan.
+        
+        Task: 
+        1. Differential diagnosis tailored to these specific risks.
+        2. Suggested treatment plan.
         """
 
-    # 4. Call Gemini with AUTO-DIAGNOSTICS
+    # 4. Call Gemini
     try:
         response = model.generate_content(prompt)
         return response.text
-        
     except Exception as e:
-        # --- IF IT FAILS, WE LIST THE VALID MODELS ---
-        error_msg = f"⚠️ **Connection Error:** {str(e)}\n\n"
-        error_msg += "🔍 **DIAGNOSTIC REPORT:**\n"
-        error_msg += "I tried to use `gemini-1.5-flash`, but it failed. Here are the models YOUR key can access:\n\n"
-        
-        try:
-            valid_models = []
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    valid_models.append(m.name)
-            error_msg += "\n".join([f"- `{m}`" for m in valid_models])
-        except Exception as list_e:
-            error_msg += f"Could not list models: {list_e}"
-            
-        return error_msg
+        return f"⚠️ AI Connection Error: {str(e)}"
