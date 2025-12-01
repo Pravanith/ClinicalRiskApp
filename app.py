@@ -254,35 +254,46 @@ def render_history_sql():
     else:
         st.info("📭 Database is empty. Run a Risk Analysis to create records.")
 
-# --- MODULE 3: LIVE DASHBOARD (FINAL WORKING VERSION) ---
+# --- MODULE 3: LIVE DASHBOARD (OPTIMIZED FLOW) ---
 def render_dashboard():
     data = st.session_state['patient_data']
     is_critical = data.get('status') == 'Critical'
     
-    # --- HEADER & AI BUTTON ---
-    c1, c2 = st.columns([3, 1])
+    # --- HEADER ---
+    st.subheader(f"🖥️ ICU Monitor: {data.get('id', 'Unknown')}")
+    
+    # --- ACTION BAR (Generate & Download) ---
+    # We use columns to put the buttons side-by-side
+    c1, c2, c3 = st.columns([1, 1, 2])
+    
     with c1:
-        st.subheader(f"🖥️ ICU Monitor: {data.get('id', 'Unknown')}")
-    with c2:
-        # 1. The AI Generation Button
-        if st.button("✨ Generate AI Discharge Note"):
+        # STEP 1: GENERATE BUTTON
+        if st.button("✨ Generate Discharge Note", type="primary"):
             with st.spinner("Consulting Gemini 2.0..."):
                 # Call backend
                 ai_summary = bk.generate_discharge_summary(data)
-                # Save to session state so it persists
+                # Save to session state
                 st.session_state['latest_discharge_note'] = ai_summary
-        
-        # 2. The Download Button (Only shows if note exists)
+    
+    with c2:
+        # STEP 2: DOWNLOAD BUTTON (Only appears if note exists)
         if 'latest_discharge_note' in st.session_state:
-            st.success("Note Ready!")
             st.download_button(
-                label="📥 Download Medical Summary",
-                data=st.session_state['latest_discharge_note'], # <--- This was the fix!
-                file_name=f"discharge_summary_{data.get('id')}.txt",
+                label="📥 Download as .txt",
+                data=st.session_state['latest_discharge_note'],
+                file_name=f"discharge_{data.get('id')}.txt",
                 mime="text/plain"
             )
+            
+    # --- PREVIEW AREA (New!) ---
+    # This shows the note immediately so the doctor can read it before downloading
+    if 'latest_discharge_note' in st.session_state:
+        with st.expander("📄 View Generated Summary", expanded=True):
+            st.text_area("Edit before downloading:", value=st.session_state['latest_discharge_note'], height=200)
 
-    # --- METRICS (With Tooltips) ---
+    st.divider()
+
+    # --- METRICS ---
     m1, m2, m3, m4 = st.columns(4)
     
     m1.metric(
