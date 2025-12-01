@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
-import backend as bk  # Importing our full backend
+import backend as bk
 
 # ---------------------------------------------------------
-# 1. PAGE CONFIGURATION
+# 1. PAGE CONFIGURATION (MUST BE FIRST!)
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Clinical Risk Monitor", 
@@ -13,6 +13,23 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ---------------------------------------------------------
+# 2. CSS & SETUP (Everything else comes AFTER)
+# ---------------------------------------------------------
+def load_css():
+    st.markdown("""
+        <style>
+        [data-testid="stSidebar"] {
+            background-color: #f8f9fa;
+            border-right: 1px solid #e9ecef;
+        }
+        [data-testid="stMetricValue"] {
+            font-size: 1.8rem !important;
+            color: #212529;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
 # Initialize Database
 bk.init_db()
