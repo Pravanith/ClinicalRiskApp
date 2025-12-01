@@ -238,6 +238,7 @@ def render_risk_calculator():
         st.divider()
         st.subheader("📊 Risk Stratification Results")
         
+        # ROW 1: Major Risks
         r1, r2, r3, r4 = st.columns(4)
         r1.metric("🩸 Bleeding Risk", f"{res['bleeding_risk']:.1f}%", 
                  "High" if res['bleeding_risk'] > 50 else "Normal", help="XGBoost Prediction")
@@ -245,7 +246,15 @@ def render_risk_calculator():
                  "High" if res['aki_risk'] > 50 else "Normal", help="KDIGO Criteria")
         r3.metric("🦠 Sepsis Score", f"{res['sepsis_risk']}", 
                  "Alert" if res['sepsis_risk'] >= 2 else "Normal", help="qSOFA Score")
-        r4.metric("MAP", f"{int(res.get('map_val', 0))} mmHg", help="Mean Arterial Pressure")
+        r4.metric("🍬 Hypo Risk", f"{res.get('hypo_risk', 0)}%", 
+                  "High" if res.get('hypo_risk', 0) > 50 else "Normal", help="Hypoglycemia Risk Model")
+
+        # ROW 2: Physiology & Vitals
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("MAP", f"{int(res.get('map_val', 0))} mmHg", help="Mean Arterial Pressure (>65 required)")
+        d2.metric("⚡ SIRS Score", f"{res.get('sirs_score', 0)}/4", help="Systemic Inflammatory Response Syndrome")
+        d3.metric("BMI", f"{res.get('bmi', 0):.1f}", help="Body Mass Index")
+        d4.metric("Pain Level", f"{res.get('pain', 0)}/10", "Severe" if res.get('pain', 0) > 7 else "Managed")
 
         st.divider()
         
