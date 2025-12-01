@@ -58,6 +58,33 @@ def clear_history():
     conn.execute("DELETE FROM patient_history")
     conn.commit()
     conn.close()
+    
+def get_latest_patient():
+    """Fetches the most recent patient record from the DB to restore state."""
+    if not os.path.exists('clinical_data.db'):
+        return None
+        
+    conn = sqlite3.connect('clinical_data.db')
+    try:
+        # Get the last row based on timestamp
+        df = pd.read_sql("SELECT * FROM patient_history ORDER BY timestamp DESC LIMIT 1", conn)
+        conn.close()
+        
+        if not df.empty:
+            row = df.iloc[0]
+            # Format it exactly how the frontend expects it
+            return {
+                'id': f"Restored-{str(row['timestamp'])[11:16]}", 
+                'age': int(row['age']),
+                'bleeding_risk': float(row['bleeding_risk_score']),
+                'aki_risk': int(row['aki_risk_score']),
+                'status': row['status'],
+                'hypo_risk': 0, # Defaulting to 0 since we don't store this in SQL yet
+                'sepsis_risk': 0 # Defaulting to 0
+            }
+        return None
+    except Exception as e:
+        return None
 
 # ==========================================
 # 2. AI MODEL LOADING
@@ -441,3 +468,30 @@ def consult_ai_doctor(role, user_input, patient_context=None):
         return response.text
     except Exception as e:
         return f"⚠️ AI Connection Error: {str(e)}"
+# ==========================================
+# 7. DATA RETRIEVAL (PERSISTENCE)
+# ==========================================
+def get_latest_patient():
+    """Fetches the most recent patient record from the DB to restore state."""
+    conn = sqlite3.connect('clinical_data.db')
+    try:
+        # Get the last row
+        df = pd.read_sql("SELECT * FROM patient_history ORDER BY timestamp DESC LIMIT 1", conn)
+        conn.close()
+        
+        if not df.empty:
+            row = df.iloc[0]
+            # Convert back to dictionary format for session state
+            return {
+                'id': f"Patient-{str(row['timestamp'])[11:19]}", # Fake ID using time
+                'age': int(row['age']),
+                'bleeding_risk': float(row['bleeding_risk_score']),
+                'aki_risk': int(row['aki_risk_score']),
+                'status': row['status'],
+                # Note: We can't restore everything (like hypo_risk) if we didn't save it to SQL
+                # But this is enough for the dashboard to look alive.
+                'restored': True 
+            }
+        return None
+    except:
+        return None
