@@ -49,7 +49,14 @@ The application follows a modular **Model-View-Controller (MVC)** pattern:
     * **API Gateway:** Secure connection to Google Gemini via Streamlit Secrets.
 * **Data Visualization:** Used **Altair** for interactive vitals telemetry charts.
 
----
+### 📂 Project Structure
+```bash
+├── app.py                 # Frontend Interface (Streamlit)
+├── backend.py             # Logic & AI Controller (Python)
+├── bleeding_risk_model.json # Pre-trained XGBoost Model
+├── clinical_data.db       # SQLite Database (Patient History)
+├── requirements.txt       # Dependencies
+└── README.md              # Documentation
 
 ## 💻 How to Run Locally
 
