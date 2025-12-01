@@ -65,7 +65,7 @@ def render_cover_page():
         st.session_state['entered_app'] = True
         st.rerun()
 
-# --- MODULE 1: RISK CALCULATOR (FINAL CORRECTED VERSION) ---
+# --- MODULE 1: RISK CALCULATOR (FINAL FIXED KEYS) ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator")
     
@@ -82,20 +82,17 @@ def render_risk_calculator():
             with col_left:
                 st.markdown("##### 👤 Patient Profile")
                 l1, l2 = st.columns(2)
-                age = l1.number_input("Age (Years)", min_value=0, max_value=120, value=0)
+                age = l1.number_input("Age (Years)", 18, 120, 65)
                 gender = l2.selectbox("Gender", ["Male", "Female"])
                 
                 w_val, w_unit = st.columns([2, 1]) 
-                weight_input = w_val.number_input("Weight", 0.0, 400.0, 0.0)
+                weight_input = w_val.number_input("Weight", 0.0, 400.0, 80.0)
                 weight_scale = w_unit.selectbox("Unit", ["kg", "lbs"], key="w_unit")
                 
-                # Weight Calc Logic
+                # Weight Calc
                 weight_kg = weight_input * 0.453592 if weight_scale == "lbs" else weight_input
                 height = 170 
-                if height > 0:
-                    bmi = weight_kg / ((height/100)**2)
-                else:
-                    bmi = 0.0
+                bmi = weight_kg / ((height/100)**2)
 
                 st.markdown("##### 🩺 Vitals")
                 v1, v2 = st.columns(2)
@@ -113,7 +110,6 @@ def render_risk_calculator():
             # --- RIGHT COLUMN: Labs & History ---
             with col_right:
                 st.markdown("##### 🧪 Critical Labs")
-                
                 lab1, lab2 = st.columns(2)
                 creat = lab1.number_input("Creatinine (0.6-1.2 mg/dL)", 0.0, 20.0, 0.0)
                 bun = lab2.number_input("Blood Urea Nitrogen (7-20)", 0, 100, 0)
@@ -141,44 +137,32 @@ def render_risk_calculator():
                 heart_failure = h3.checkbox("Heart Failure")
                 gi_bleed = h4.checkbox("History of GI Bleed")
                 
-                # Row 2 of checkboxes
                 m1, m2 = st.columns(2)
-                nsaid = m1.checkbox("NSAID Use (e.g. Ibuprofen)")
-                active_chemo = m2.checkbox("Active Chemotherapy")
+                nsaid = m1.checkbox("NSAID Use")
+                active_chemo = m2.checkbox("Active Chemo")
                 
                 m3, m4 = st.columns(2)
                 diuretic = m3.checkbox("Diuretic Use")
-                acei = m4.checkbox("ACEi/ARB Use")
+                acei = m4.checkbox("ACEi/ARB")
                 
                 m5, m6 = st.columns(2)
-                insulin = m5.checkbox("Insulin Dependent")
+                insulin = m5.checkbox("Insulin")
                 hba1c_high = m6.checkbox("Uncontrolled Diabetes")
                 
                 altered_mental = st.checkbox("Altered Mental Status (Confusion)")
                 
-                # Default pain
                 pain = 0
 
-            # SUBMIT BUTTON
             st.write("") 
             submitted = st.form_submit_button("🚀 Run Clinical Analysis", type="primary", use_container_width=True)
 
     # --- LOGIC & RESULTS ---
     if submitted:
-        # 1. Pre-Processing
         final_temp_c = temp_c 
         is_high_bp = 1 if sys_bp > 140 else 0
+        map_val = (sys_bp + (2 * dia_bp)) / 3 if sys_bp > 0 else 0
         
-        if sys_bp > 0:
-            map_val = (sys_bp + (2 * dia_bp)) / 3 
-        else:
-            map_val = 0
-        
-        # --- GLOBAL ZERO CHECK ---
-        # Only run calculations if valid patient data is entered (Age > 0 AND BP > 0)
         if age > 0 and sys_bp > 0:
-            
-            # 2. AI Prediction (Bleeding)
             input_df = pd.DataFrame({
                 'age': [age], 'inr': [inr], 'anticoagulant': [1 if anticoag else 0],
                 'gi_bleed': [1 if gi_bleed else 0], 'high_bp': [is_high_bp],
@@ -186,14 +170,11 @@ def render_risk_calculator():
                 'weight': [weight_kg], 'liver_disease': [1 if liver_disease else 0]
             })
             pred_bleeding = bleeding_model.predict(input_df)[0]
-
-            # 3. Clinical Rules (Now passing ALL variables correctly)
             pred_aki = bk.calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
             pred_sepsis = bk.calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
             pred_hypo = bk.calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
             sirs_score = bk.calculate_sirs_score(final_temp_c, hr, resp_rate, wbc)
             
-            # HAS-BLED Score
             has_bled = 0
             if sys_bp > 160: has_bled += 1
             if creat > 2.2 or liver_disease: has_bled += 1
@@ -201,9 +182,7 @@ def render_risk_calculator():
             if inr > 1.0: has_bled += 1
             if age > 65: has_bled += 1
             if nsaid or anticoag: has_bled += 1
-            
         else:
-            # Default to 0 if no data entered
             pred_bleeding = 0.0
             pred_aki = 0
             pred_sepsis = 0
@@ -213,9 +192,9 @@ def render_risk_calculator():
 
         status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis >= 2) else 'Stable'
         
-        # 4. Save Patient Data
         bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
         
+        # SAVE DATA (Using Consistent Keys)
         st.session_state['patient_data'] = {
             'id': f"Patient-{age}-{int(sys_bp)}", 
             'age': age, 'gender': gender, 'weight': weight_kg,
@@ -223,19 +202,29 @@ def render_risk_calculator():
             'temp_c': temp_c, 'o2_sat': o2_sat, 'pain': pain,
             'creat': creat, 'potassium': potassium, 'inr': inr, 'bun': bun,
             'wbc': wbc, 'hgb': hgb, 'platelets': platelets, 'lactate': lactate, 'glucose': glucose,
-            'bleeding_risk': float(pred_bleeding), 'aki_risk': int(pred_aki),
-            'sepsis_risk': int(pred_sepsis), 'hypo_risk': int(pred_hypo),
-            'sirs_score': sirs_score, 'status': status_calc, 'map_val': map_val, 'bmi': bmi, 'has_bled': has_bled
+            # KEY FIX IS HERE: Using the same keys as the metric function expects
+            'bleeding_risk': float(pred_bleeding), 
+            'aki_risk': int(pred_aki),
+            'sepsis_risk': int(pred_sepsis), 
+            'hypo_risk': int(pred_hypo),
+            'sirs_score': sirs_score, 
+            'status': status_calc, 
+            'map_val': map_val, 
+            'bmi': bmi, 
+            'has_bled': has_bled
         }
         
-        # Sync local state
         st.session_state['analysis_results'] = st.session_state['patient_data']
 
+    # --- RESULTS DISPLAY ---
+    if 'analysis_results' in st.session_state:
+        res = st.session_state['analysis_results']
+        
         st.divider()
         st.subheader("📊 Risk Stratification Results")
         
-        # ROW 1: MAJOR PREDICTIONS
         r1, r2, r3, r4 = st.columns(4)
+        # Using consistent keys now
         r1.metric("🩸 Bleeding Risk", f"{res['bleeding_risk']:.1f}%", 
                  "High" if res['bleeding_risk'] > 50 else "Normal", help="XGBoost Prediction")
         r2.metric("💧 AKI Risk", f"{res['aki_risk']}%", 
@@ -243,23 +232,24 @@ def render_risk_calculator():
         r3.metric("🦠 Sepsis Score", f"{res['sepsis_risk']}", 
                  "Alert" if res['sepsis_risk'] >= 2 else "Normal", help="qSOFA Score")
         r4.metric("🍬 Hypo Risk", f"{res.get('hypo_risk', 0)}%", 
-                  "High" if res.get('hypo_risk', 0) > 50 else "Normal", help="Hypoglycemia Risk Model")
+                  "High" if res.get('hypo_risk', 0) > 50 else "Normal", help="Hypoglycemia Risk")
 
-        # ROW 2: HEMODYNAMICS & PHYSIOLOGY
         d1, d2, d3, d4 = st.columns(4)
-        d1.metric("MAP", f"{int(res.get('map_val', 0))} mmHg", "Low" if res.get('map_val', 0) < 65 else "Normal", help="Mean Arterial Pressure (>65 required)")
-        d2.metric("⚡ SIRS Score", f"{res.get('sirs_score', 0)}/4", "Inflammation" if res.get('sirs_score', 0) >= 2 else "Normal", help="Systemic Inflammatory Response")
-        d3.metric("BMI", f"{res['bmi']:.1f}", "Obese" if res['bmi'] > 30 else "Normal", help="Body Mass Index")
-        d4.metric("Pain Level", f"{res.get('pain', 0)}/10", "Severe" if res.get('pain', 0) > 7 else "Managed")
+        d1.metric("MAP", f"{int(res.get('map_val', 0))} mmHg", help="Mean Arterial Pressure")
+        d2.metric("⚡ SIRS Score", f"{res.get('sirs_score', 0)}/4", help="Inflammatory Response Score")
+        d3.metric("BMI", f"{res.get('bmi', 0):.1f}")
+        d4.metric("Pain", f"{res.get('pain', 0)}/10")
+
+        st.divider()
         
         # CLINICAL ALERTS
         st.markdown("### ⚠️ Clinical Alerts & AI Assessment")
         violations = 0 
         
-        if res.get('o2_sat', 100) > 0 and res.get('o2_sat', 100) < 88: 
+        if res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 88: 
             st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%) - Secure Airway Immediately!")
             violations += 1
-        elif res.get('o2_sat', 100) > 0 and res.get('o2_sat', 100) < 92:
+        elif res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 92:
             st.warning(f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%) - Oxygen Therapy Indicated")
             violations += 1
         
@@ -285,7 +275,6 @@ def render_risk_calculator():
         if violations == 0:
             st.success("✅ No immediate Life-Threatening Protocol violations detected.")
 
-        # AI Consultant
         st.divider()
         c_ai, c_txt = st.columns([1, 3])
         with c_ai:
