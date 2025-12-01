@@ -190,8 +190,8 @@ def check_interaction(d1, d2):
     d1, d2 = d1.lower().strip(), d2.lower().strip()
     if (d1, d2) in INTERACTION_DB: return INTERACTION_DB[(d1, d2)]
     if (d2, d1) in INTERACTION_DB: return INTERACTION_DB[(d2, d1)]
-    return "✅ No high-alert interaction found."
-
+        
+    return None
 # ==========================================
 # 5. FULL KNOWLEDGE BASE & CHATBOT LOGIC
 # ==========================================
