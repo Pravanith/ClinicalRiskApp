@@ -511,7 +511,7 @@ else:
         render_batch_analysis()
     elif menu == "Medication Checker":
         render_medication_checker()
-    elif menu == "Clinical Chatbot":
+    elif menu == "📚 Medical Glossary":
         render_chatbot()
-    elif menu == "AI Diagnostician":
+    elif menu == "🧠 AI Clinical Consultant":
         render_ai_diagnostician()
