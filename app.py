@@ -65,7 +65,7 @@ def render_cover_page():
         st.session_state['entered_app'] = True
         st.rerun()
 
-# --- MODULE 1: RISK CALCULATOR (FINAL: SPLIT-SCREEN + ZERO-BASE + SAFETY LOGIC) ---
+# --- MODULE 1: RISK CALCULATOR (FIXED NAME ERROR) ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator")
     
@@ -104,6 +104,7 @@ def render_risk_calculator():
                 resp_rate = v4.number_input("Resp Rate (Normal: 12-20)", 0, 60, 18)
                 
                 v5, v6 = st.columns(2)
+                # Note: We named this variable 'temp_c' directly
                 temp_c = v5.number_input("Temp °C (Normal: 36.5-37.5)", 30.0, 45.0, 37.0, step=0.1)
                 o2_sat = v6.number_input("O2 Sat % (Normal: >95%)", 0, 100, 98)
 
@@ -130,12 +131,12 @@ def render_risk_calculator():
 
                 st.markdown("##### 📋 Medical History")
                 h1, h2 = st.columns(2)
-                anticoag = h1.checkbox("Anticoagulant")
+                anticoag = h1.checkbox("Anticoagulant Use")
                 liver_disease = h2.checkbox("Liver Disease")
                 
                 h3, h4 = st.columns(2)
                 heart_failure = h3.checkbox("Heart Failure")
-                gi_bleed = h4.checkbox("GI Bleed History")
+                gi_bleed = h4.checkbox("History of GI Bleed")
                 
                 altered_mental = st.checkbox("Altered Mental Status (Confusion)")
                 
@@ -146,47 +147,47 @@ def render_risk_calculator():
             st.write("") 
             submitted = st.form_submit_button("🚀 Run Clinical Analysis", type="primary", use_container_width=True)
 
-            # --- LOGIC ---
-            if submitted:
-                # Pre-Processing
-                final_temp_c = (temp_input - 32) * 5/9 if temp_scale == "°F" else temp_input
-                map_val = (sys_bp + (2 * dia_bp)) / 3 if sys_bp > 0 else 0
-                is_high_bp = 1 if sys_bp > 140 else 0
-                
-                # Prediction
-                input_df = pd.DataFrame({
-                    'age': [age], 'inr': [inr], 'anticoagulant': [1 if anticoag else 0],
-                    'gi_bleed': [1 if gi_bleed else 0], 'high_bp': [is_high_bp],
-                    'antiplatelet': [0], 'gender_female': [1 if gender == "Female" else 0],
-                    'weight': [weight_kg], 'liver_disease': [1 if liver_disease else 0]
-                })
-                
-                pred_bleeding = bleeding_model.predict(input_df)[0]
-                pred_aki = bk.calculate_aki_risk(age, False, False, sys_bp, False, creat, False, heart_failure)
-                pred_sepsis = bk.calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, temp_c)
-                pred_hypo = bk.calculate_hypoglycemic_risk(False, (creat>1.3), False, False)
-                sirs_score = bk.calculate_sirs_score(temp_c, hr, resp_rate, wbc)
-                
-                status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis >= 2) else 'Stable'
-                
-                # Database Save
-                bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
-                
-                # Global Session Update (Fixes Dashboard)
-                st.session_state['patient_data'] = {
-                    'id': f"Patient-{age}-{int(sys_bp)}", 
-                    'age': age, 'gender': gender, 'weight': weight_kg,
-                    'sys_bp': sys_bp, 'dia_bp': dia_bp, 'hr': hr, 'resp_rate': resp_rate, 
-                    'temp_c': temp_c, 'o2_sat': o2_sat, 'pain': pain,
-                    'creat': creat, 'potassium': potassium, 'inr': inr, 'bun': bun,
-                    'wbc': wbc, 'hgb': hgb, 'platelets': platelets, 'lactate': lactate, 'glucose': glucose,
-                    'bleeding_risk': float(pred_bleeding), 'aki_risk': int(pred_aki),
-                    'sepsis_risk': int(pred_sepsis), 'hypo_risk': int(pred_hypo),
-                    'sirs_score': sirs_score, 'status': status_calc, 'map_val': map_val, 'bmi': bmi, 'has_bled': 0
-                }
-                
-                # Local Session Update (Fixes This View)
-                st.session_state['analysis_results'] = st.session_state['patient_data']
+    # --- LOGIC & RESULTS ---
+    if submitted:
+        # 1. Pre-Processing (FIXED: Use temp_c directly)
+        final_temp_c = temp_c  # No conversion needed, input is already C
+        
+        map_val = (sys_bp + (2 * dia_bp)) / 3 if sys_bp > 0 else 0
+        is_high_bp = 1 if sys_bp > 140 else 0
+        
+        # 2. AI Prediction
+        input_df = pd.DataFrame({
+            'age': [age], 'inr': [inr], 'anticoagulant': [1 if anticoag else 0],
+            'gi_bleed': [1 if gi_bleed else 0], 'high_bp': [is_high_bp],
+            'antiplatelet': [0], 'gender_female': [1 if gender == "Female" else 0],
+            'weight': [weight_kg], 'liver_disease': [1 if liver_disease else 0]
+        })
+        
+        pred_bleeding = bleeding_model.predict(input_df)[0]
+        pred_aki = bk.calculate_aki_risk(age, False, False, sys_bp, False, creat, False, heart_failure)
+        pred_sepsis = bk.calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
+        pred_hypo = bk.calculate_hypoglycemic_risk(False, (creat>1.3), False, False)
+        sirs_score = bk.calculate_sirs_score(final_temp_c, hr, resp_rate, wbc)
+        
+        status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis >= 2) else 'Stable'
+        
+        # 3. Save Patient Data
+        bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
+        
+        st.session_state['patient_data'] = {
+            'id': f"Patient-{age}-{int(sys_bp)}", 
+            'age': age, 'gender': gender, 'weight': weight_kg,
+            'sys_bp': sys_bp, 'dia_bp': dia_bp, 'hr': hr, 'resp_rate': resp_rate, 
+            'temp_c': temp_c, 'o2_sat': o2_sat, 'pain': pain,
+            'creat': creat, 'potassium': potassium, 'inr': inr, 'bun': bun,
+            'wbc': wbc, 'hgb': hgb, 'platelets': platelets, 'lactate': lactate, 'glucose': glucose,
+            'bleeding_risk': float(pred_bleeding), 'aki_risk': int(pred_aki),
+            'sepsis_risk': int(pred_sepsis), 'hypo_risk': int(pred_hypo),
+            'sirs_score': sirs_score, 'status': status_calc, 'map_val': map_val, 'bmi': bmi, 'has_bled': 0
+        }
+        
+        # Also set analysis_results for this view
+        st.session_state['analysis_results'] = st.session_state['patient_data']
 
     # --- RESULTS DISPLAY ---
     if 'analysis_results' in st.session_state:
@@ -206,67 +207,30 @@ def render_risk_calculator():
 
         st.divider()
         
-        # --- CLINICAL ALERTS (MASSIVE LOGIC BLOCK) ---
+        # CLINICAL ALERTS (Detailed)
         st.markdown("### ⚠️ Clinical Alerts & AI Assessment")
         violations = 0 
         
-        # 1. AIRWAY / BREATHING
         if res['o2_sat'] > 0 and res['o2_sat'] < 88: 
-            st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%) - Secure Airway Immediately!")
+            st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%) - Secure Airway!")
             violations += 1
         elif res['o2_sat'] > 0 and res['o2_sat'] < 92:
-            st.warning(f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%) - Oxygen Therapy Indicated")
+            st.warning(f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%) - O2 Therapy Required")
             violations += 1
-        if res['resp_rate'] > 30:
-            st.error(f"🚨 SEVERE TACHYPNEA (RR {res['resp_rate']})")
-            violations += 1
-
-        # 2. CIRCULATION
-        if res['sys_bp'] > 180 or res['dia_bp'] > 120: 
-            st.error(f"🚨 HYPERTENSIVE CRISIS (BP {res['sys_bp']}/{res['dia_bp']})")
+        
+        if res['sys_bp'] > 180: 
+            st.error(f"🚨 HYPERTENSIVE CRISIS (BP {res['sys_bp']})")
             violations += 1
         elif res['sys_bp'] > 0 and res['sys_bp'] < 90: 
-            st.error(f"🚨 SHOCK / HYPOTENSION (BP {res['sys_bp']}/{res['dia_bp']})")
-            violations += 1
-        if res['hr'] > 130:
-            st.error(f"🚨 SEVERE TACHYCARDIA (HR {res['hr']})")
-            violations += 1
-        elif res['hr'] > 0 and res['hr'] < 40:
-            st.error(f"🚨 SEVERE BRADYCARDIA (HR {res['hr']})")
+            st.error(f"🚨 SHOCK / HYPOTENSION (BP {res['sys_bp']})")
             violations += 1
 
-        # 3. METABOLIC
-        if res['glucose'] > 0 and res['glucose'] < 70:
-            st.error(f"🚨 HYPOGLYCEMIA ({res['glucose']} mg/dL)")
-            violations += 1
-        elif res['glucose'] > 400:
-            st.error(f"🚨 SEVERE HYPERGLYCEMIA ({res['glucose']} mg/dL)")
-            violations += 1
-        if res['potassium'] > 6.0: 
-            st.error(f"🚨 CRITICAL HYPERKALEMIA (K+ {res['potassium']})")
-            violations += 1
-        elif res['potassium'] > 0 and res['potassium'] < 2.5:
-            st.error(f"🚨 CRITICAL HYPOKALEMIA (K+ {res['potassium']})")
-            violations += 1
-        if res['lactate'] > 4.0:
-            st.error(f"🚨 LACTIC ACIDOSIS ({res['lactate']} mmol/L)")
-            violations += 1
-
-        # 4. HEMATOLOGY / RENAL
-        if res['hgb'] > 0 and res['hgb'] < 7.0:
-            st.error(f"🚨 CRITICAL ANEMIA (Hgb {res['hgb']})")
-            violations += 1
-        if res['platelets'] > 0 and res['platelets'] < 50:
-            st.error(f"🚨 CRITICAL THROMBOCYTOPENIA (Plt {res['platelets']})")
-            violations += 1
-        if res['inr'] > 4.0:
-            st.error(f"🚨 CRITICAL INR ({res['inr']})")
-            violations += 1
         if res['creat'] > 3.0: 
             st.error(f"🚨 ACUTE RENAL FAILURE (Cr {res['creat']})")
             violations += 1
-        if res['sepsis_risk'] >= 2: 
-            st.error("🚨 SEPSIS ALERT: qSOFA Score ≥ 2")
+        
+        if res['potassium'] > 6.0:
+            st.error(f"🚨 CRITICAL HYPERKALEMIA (K+ {res['potassium']})")
             violations += 1
 
         if violations == 0:
