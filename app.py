@@ -207,29 +207,48 @@ def render_risk_calculator():
             d3.metric("BMI Category", f"{bmi:.1f}", "Obese" if bmi > 30 else "Normal")
             d4.metric("Pain Status", f"{pain}/10", "Managed")
 
-            # 6. Detailed Alerts (Kept in Frontend for rendering)
-            with st.expander("⚠️ Detailed Clinical Alerts", expanded=True):
-                # BMI Check
-                if bmi >= 40: st.error(f"🔴 MORBID OBESITY: BMI {bmi:.1f}")
-                elif bmi >= 35: st.warning(f"⚠️ Severe Obesity: BMI {bmi:.1f}")
+            # 6. Detailed Clinical Alerts (Hybrid: Rules + AI)
+            with st.expander("⚠️ Detailed Clinical Alerts & AI Assessment", expanded=True):
                 
-                # Lab Checks
-                if potassium > 5.5: st.error(f"🔴 CRITICAL HYPERKALEMIA: K+ {potassium}")
-                if platelets > 0 and platelets < 50: st.error(f"🔴 SEVERE THROMBOCYTOPENIA: Plt {platelets}")
-                if glucose < 70 and glucose > 0: st.error(f"🔴 HYPOGLYCEMIA: {glucose}")
-                if lactate > 4.0: st.error(f"🔴 SEVERE LACTIC ACIDOSIS: {lactate}")
-                if inr > 3.0: st.error(f"🔴 HIGH INR: {inr}")
-                if creat > 3.0: st.error(f"🔴 ACUTE RENAL FAILURE: Cr {creat}")
+                # --- A. Standard Protocol Alerts (Instant) ---
+                st.markdown("#### 🛑 Protocol Violations")
+                if bmi >= 40: st.error(f"MORBID OBESITY (BMI {bmi:.1f})")
+                if potassium > 5.5: st.error(f"CRITICAL HYPERKALEMIA (K+ {potassium})")
+                if creat > 3.0: st.error(f"ACUTE RENAL FAILURE (Cr {creat})")
+                if sys_bp > 180: st.error(f"HYPERTENSIVE CRISIS (BP {sys_bp})")
+                if pred_sepsis >= 2: st.error("🚨 SEPSIS ALERT: qSOFA ≥ 2")
                 
-                # Vital Checks
-                if sys_bp > 180 or dia_bp > 120: st.error(f"🔴 HYPERTENSIVE CRISIS")
-                if o2_sat > 0 and o2_sat < 88: st.error(f"🔴 CRITICAL HYPOXIA")
-                if pred_sepsis >= 2: st.error("🚨 SEPSIS ALERT: Initiate Protocol")
+                if (potassium < 5.5 and sys_bp < 180 and creat < 3.0):
+                     st.success("✅ No immediate Life-Threatening Protocol violations detected.")
+
+                st.divider()
+
+                # --- B. AI Analysis (Generative) ---
+                st.markdown("#### 🤖 AI Consultant Analysis")
                 
-                # Safe Check
-                if (potassium < 5.5 and potassium > 3.5 and platelets > 100 and glucose > 70 
-                    and sys_bp < 180 and sys_bp > 90 and bmi < 30):
-                     st.success("✅ No critical alerts detected.")
+                # We create a context dictionary to send to the backend
+                ai_context = {
+                    'age': age,
+                    'sbp': sys_bp,
+                    'creat': creat,
+                    'bleeding_risk': float(pred_bleeding),
+                    'aki_risk': int(pred_aki),
+                    'sepsis_risk': int(pred_sepsis)
+                }
+                
+                # Add a button so we don't waste API credits on every click
+                if st.button("⚡ Generate AI Clinical Assessment"):
+                    with st.spinner("Consulting Medical AI..."):
+                        # Call the NEW backend role
+                        ai_analysis = bk.consult_ai_doctor(
+                            role='risk_assessment', 
+                            user_input="",  # No text input needed for this mode
+                            patient_context=ai_context
+                        )
+                        st.markdown(ai_analysis)
+                        
+                        # Optional: Add disclaimer
+                        st.caption("⚠️ AI-Generated Insight. Verify with clinical protocols.")
 
 # --- MODULE 2: PATIENT HISTORY (SQL) ---
 def render_history_sql():
