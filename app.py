@@ -48,11 +48,12 @@ def render_cover_page():
         st.session_state['entered_app'] = True
         st.rerun()
 
-# --- MODULE 1: RISK CALCULATOR ---
+# --- MODULE 1: RISK CALCULATOR (FIXED INDENTATION) ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator (Advanced)")
     st.caption("Enter patient values below. Default is 0.")
     
+    # 1. START THE FORM
     with st.form("risk_form"):
         # 1. Patient Demographics
         st.markdown("#### 1. Patient Demographics")
@@ -132,124 +133,125 @@ def render_risk_calculator():
         gi_bleed = h2.checkbox("History of GI Bleed")
         altered_mental = h3.checkbox("Altered Mental Status (Confusion)")
 
+        # SUBMIT BUTTON (Stays inside form)
         submitted = st.form_submit_button("Run Clinical Analysis", type="primary")
 
-        if submitted:
-            # --- A. PRE-PROCESSING ---
-            if temp_scale == "°F": 
-                final_temp_c = (temp_input - 32) * 5/9 
-            else: 
-                final_temp_c = temp_input
-            
-            # Handle 0 BP for MAP calc
-            if sys_bp > 0:
-                map_val = (sys_bp + (2 * dia_bp)) / 3 
-            else:
-                map_val = 0
+    # 2. LOGIC OUTSIDE THE FORM (This fixes the error)
+    if submitted:
+        # --- A. PRE-PROCESSING ---
+        if temp_scale == "°F": 
+            final_temp_c = (temp_input - 32) * 5/9 
+        else: 
+            final_temp_c = temp_input
+        
+        # Handle 0 BP for MAP calc
+        if sys_bp > 0:
+            map_val = (sys_bp + (2 * dia_bp)) / 3 
+        else:
+            map_val = 0
 
-            # --- B. RISK CALCULATIONS ---
-            
-            # 1. AI Bleeding Prediction
-            is_high_bp = 1 if sys_bp > 140 else 0
-            input_df = pd.DataFrame({
-                'age': [age], 'inr': [inr], 
-                'anticoagulant': [1 if anticoag else 0],
-                'gi_bleed': [1 if gi_bleed else 0], 
-                'high_bp': [is_high_bp],
-                'antiplatelet': [0], 
-                'gender_female': [1 if gender == "Female" else 0],
-                'weight': [weight_kg], 
-                'liver_disease': [1 if liver_disease else 0]
-            })
-            pred_bleeding = bleeding_model.predict(input_df)[0]
-            
-            # 2. Rule Predictions (From Backend)
-            pred_aki = bk.calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
-            pred_sepsis = bk.calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
-            pred_hypo = bk.calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
-            sirs_score = bk.calculate_sirs_score(final_temp_c, hr, resp_rate, wbc)
+        # --- B. RISK CALCULATIONS ---
+        
+        # 1. AI Bleeding Prediction
+        is_high_bp = 1 if sys_bp > 140 else 0
+        input_df = pd.DataFrame({
+            'age': [age], 'inr': [inr], 
+            'anticoagulant': [1 if anticoag else 0],
+            'gi_bleed': [1 if gi_bleed else 0], 
+            'high_bp': [is_high_bp],
+            'antiplatelet': [0], 
+            'gender_female': [1 if gender == "Female" else 0],
+            'weight': [weight_kg], 
+            'liver_disease': [1 if liver_disease else 0]
+        })
+        pred_bleeding = bleeding_model.predict(input_df)[0]
+        
+        # 2. Rule Predictions (From Backend)
+        pred_aki = bk.calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
+        pred_sepsis = bk.calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
+        pred_hypo = bk.calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
+        sirs_score = bk.calculate_sirs_score(final_temp_c, hr, resp_rate, wbc)
 
-            # 3. HAS-BLED Score
-            has_bled = 0
-            if sys_bp > 160: has_bled += 1
-            if creat > 2.2 or liver_disease: has_bled += 1
-            if gi_bleed: has_bled += 1
-            if inr > 1.0: has_bled += 1
-            if age > 65: has_bled += 1
-            if nsaid or anticoag: has_bled += 1
+        # 3. HAS-BLED Score
+        has_bled = 0
+        if sys_bp > 160: has_bled += 1
+        if creat > 2.2 or liver_disease: has_bled += 1
+        if gi_bleed: has_bled += 1
+        if inr > 1.0: has_bled += 1
+        if age > 65: has_bled += 1
+        if nsaid or anticoag: has_bled += 1
 
-            # 4. Save State
-            status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis > 50) else 'Stable'
-            st.session_state['patient_data'] = {
-                'id': 'Calculated Patient', 'age': age,
-                'bleeding_risk': float(pred_bleeding), 'aki_risk': int(pred_aki),
-                'sepsis_risk': int(pred_sepsis), 'hypo_risk': int(pred_hypo),
-                'status': status_calc
+        # 4. Save State
+        status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis > 50) else 'Stable'
+        st.session_state['patient_data'] = {
+            'id': 'Calculated Patient', 'age': age,
+            'bleeding_risk': float(pred_bleeding), 'aki_risk': int(pred_aki),
+            'sepsis_risk': int(pred_sepsis), 'hypo_risk': int(pred_hypo),
+            'status': status_calc
+        }
+        
+        bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
+        
+        st.success("Analysis Complete!")
+        
+        # 5. Display Results
+        st.divider()
+        st.markdown("#### 📊 Clinical Analysis Results")
+        
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("Bleeding Risk (AI)", f"{pred_bleeding:.1f}%", help="Predicted by XGBoost Model")
+        r2.metric("AKI Risk (Rule)", f"{pred_aki}%", help="Rule-based calculation (KDIGO)")
+        r3.metric("Sepsis Score (qSOFA)", f"{pred_sepsis}", help="qSOFA Score (0-3)")
+        r4.metric("HAS-BLED Score", f"{has_bled}/9", "High Risk" if has_bled >=3 else "Low Risk", help="Standard Atrial Fibrillation Bleeding Risk Score")
+
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("MAP (Perfusion)", f"{int(map_val)} mmHg", "Low" if map_val > 0 and map_val < 65 else "Normal", help="Mean Arterial Pressure. Target > 65 mmHg.")
+        d2.metric("SIRS Score", f"{sirs_score}/4", "Inflammation" if sirs_score >=2 else "Normal", help="Systemic Inflammatory Response Syndrome criteria.")
+        d3.metric("BMI Category", f"{bmi:.1f}", "Obese" if bmi > 30 else "Normal")
+        d4.metric("Pain Status", f"{pain}/10", "Managed")
+
+        # 6. Detailed Clinical Alerts (Hybrid: Rules + AI)
+        with st.expander("⚠️ Detailed Clinical Alerts & AI Assessment", expanded=True):
+            
+            # --- A. Standard Protocol Alerts (Instant) ---
+            st.markdown("#### 🛑 Protocol Violations")
+            if bmi >= 40: st.error(f"MORBID OBESITY (BMI {bmi:.1f})")
+            if potassium > 5.5: st.error(f"CRITICAL HYPERKALEMIA (K+ {potassium})")
+            if creat > 3.0: st.error(f"ACUTE RENAL FAILURE (Cr {creat})")
+            if sys_bp > 180: st.error(f"HYPERTENSIVE CRISIS (BP {sys_bp})")
+            if pred_sepsis >= 2: st.error("🚨 SEPSIS ALERT: qSOFA ≥ 2")
+            
+            if (potassium < 5.5 and sys_bp < 180 and creat < 3.0):
+                    st.success("✅ No immediate Life-Threatening Protocol violations detected.")
+
+            st.divider()
+
+            # --- B. AI Analysis (Generative) ---
+            st.markdown("#### 🤖 AI Consultant Analysis")
+            
+            # We create a context dictionary to send to the backend
+            ai_context = {
+                'age': age,
+                'sbp': sys_bp,
+                'creat': creat,
+                'bleeding_risk': float(pred_bleeding),
+                'aki_risk': int(pred_aki),
+                'sepsis_risk': int(pred_sepsis)
             }
             
-            bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
-            
-            st.success("Analysis Complete!")
-            
-            # 5. Display Results (UPDATED WITH TOOLTIPS)
-            st.divider()
-            st.markdown("#### 📊 Clinical Analysis Results")
-            
-            r1, r2, r3, r4 = st.columns(4)
-            r1.metric("Bleeding Risk (AI)", f"{pred_bleeding:.1f}%", help="Predicted by XGBoost Model")
-            r2.metric("AKI Risk (Rule)", f"{pred_aki}%", help="Rule-based calculation (KDIGO)")
-            r3.metric("Sepsis Score (qSOFA)", f"{pred_sepsis}", help="qSOFA Score (0-3)")
-            r4.metric("HAS-BLED Score", f"{has_bled}/9", "High Risk" if has_bled >=3 else "Low Risk", help="Standard Atrial Fibrillation Bleeding Risk Score")
-
-            d1, d2, d3, d4 = st.columns(4)
-            d1.metric("MAP (Perfusion)", f"{int(map_val)} mmHg", "Low" if map_val > 0 and map_val < 65 else "Normal", help="Mean Arterial Pressure. Target > 65 mmHg.")
-            d2.metric("SIRS Score", f"{sirs_score}/4", "Inflammation" if sirs_score >=2 else "Normal", help="Systemic Inflammatory Response Syndrome criteria.")
-            d3.metric("BMI Category", f"{bmi:.1f}", "Obese" if bmi > 30 else "Normal")
-            d4.metric("Pain Status", f"{pain}/10", "Managed")
-
-            # 6. Detailed Clinical Alerts (Hybrid: Rules + AI)
-            with st.expander("⚠️ Detailed Clinical Alerts & AI Assessment", expanded=True):
-                
-                # --- A. Standard Protocol Alerts (Instant) ---
-                st.markdown("#### 🛑 Protocol Violations")
-                if bmi >= 40: st.error(f"MORBID OBESITY (BMI {bmi:.1f})")
-                if potassium > 5.5: st.error(f"CRITICAL HYPERKALEMIA (K+ {potassium})")
-                if creat > 3.0: st.error(f"ACUTE RENAL FAILURE (Cr {creat})")
-                if sys_bp > 180: st.error(f"HYPERTENSIVE CRISIS (BP {sys_bp})")
-                if pred_sepsis >= 2: st.error("🚨 SEPSIS ALERT: qSOFA ≥ 2")
-                
-                if (potassium < 5.5 and sys_bp < 180 and creat < 3.0):
-                     st.success("✅ No immediate Life-Threatening Protocol violations detected.")
-
-                st.divider()
-
-                # --- B. AI Analysis (Generative) ---
-                st.markdown("#### 🤖 AI Consultant Analysis")
-                
-                # We create a context dictionary to send to the backend
-                ai_context = {
-                    'age': age,
-                    'sbp': sys_bp,
-                    'creat': creat,
-                    'bleeding_risk': float(pred_bleeding),
-                    'aki_risk': int(pred_aki),
-                    'sepsis_risk': int(pred_sepsis)
-                }
-                
-                # Add a button so we don't waste API credits on every click
-                if st.button("⚡ Generate AI Clinical Assessment"):
-                    with st.spinner("Consulting Medical AI..."):
-                        # Call the NEW backend role
-                        ai_analysis = bk.consult_ai_doctor(
-                            role='risk_assessment', 
-                            user_input="",  # No text input needed for this mode
-                            patient_context=ai_context
-                        )
-                        st.markdown(ai_analysis)
-                        
-                        # Optional: Add disclaimer
-                        st.caption("⚠️ AI-Generated Insight. Verify with clinical protocols.")
-
+            # Add a button so we don't waste API credits on every click
+            if st.button("⚡ Generate AI Clinical Assessment"):
+                with st.spinner("Consulting Medical AI..."):
+                    # Call the NEW backend role
+                    ai_analysis = bk.consult_ai_doctor(
+                        role='risk_assessment', 
+                        user_input="",  # No text input needed for this mode
+                        patient_context=ai_context
+                    )
+                    st.markdown(ai_analysis)
+                    
+                    # Optional: Add disclaimer
+                    st.caption("⚠️ AI-Generated Insight. Verify with clinical protocols.")
 # --- MODULE 2: PATIENT HISTORY (SQL) ---
 def render_history_sql():
     st.subheader("🗄️ Patient History Database")
