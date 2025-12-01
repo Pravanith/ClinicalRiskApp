@@ -528,15 +528,6 @@ def render_batch_analysis():
             except Exception as e:
                 st.error(f"Error processing CSV: {e}")
 
-    # --- TAB 2: IMAGING (SIMULATION) ---
-    with tab2:
-        st.info("ℹ️ Simulates DenseNet-121 Deep Learning analysis.")
-        img = st.file_uploader("Upload X-Ray", type=["jpg", "png"])
-        if img and st.button("Analyze Image"):
-            st.image(img, width=200)
-            st.success("✅ Prediction: PNEUMONIA (Confidence: 88.4%)")
-            st.warning("Recommend: Chest CT and Antibiotics.")
-
 # --- MODULE 5: MEDICATION CHECKER ---
 def render_medication_checker():
     st.subheader("Drug-Drug Interaction Checker")
