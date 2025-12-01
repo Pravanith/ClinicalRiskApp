@@ -231,7 +231,7 @@ def render_risk_calculator():
         # Sync local state
         st.session_state['analysis_results'] = st.session_state['patient_data']
 
-    st.divider()
+        st.divider()
         st.subheader("📊 Risk Stratification Results")
         
         # ROW 1: MAJOR PREDICTIONS
