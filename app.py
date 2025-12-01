@@ -254,42 +254,33 @@ def render_history_sql():
     else:
         st.info("📭 Database is empty. Run a Risk Analysis to create records.")
 
-# --- MODULE 3: LIVE DASHBOARD (WITH EXPORT & TOOLTIPS) ---
+# --- MODULE 3: LIVE DASHBOARD (FINAL WORKING VERSION) ---
 def render_dashboard():
     data = st.session_state['patient_data']
     is_critical = data.get('status') == 'Critical'
     
-    # --- HEADER & EXPORT BUTTON ---
+    # --- HEADER & AI BUTTON ---
     c1, c2 = st.columns([3, 1])
     with c1:
         st.subheader(f"🖥️ ICU Monitor: {data.get('id', 'Unknown')}")
     with c2:
-        # AI POWERED BUTTON
+        # 1. The AI Generation Button
         if st.button("✨ Generate AI Discharge Note"):
             with st.spinner("Consulting Gemini 2.0..."):
-                # 1. Call the Backend AI
+                # Call backend
                 ai_summary = bk.generate_discharge_summary(data)
-                
-                # 2. Save to Session State (so it doesn't vanish)
+                # Save to session state so it persists
                 st.session_state['latest_discharge_note'] = ai_summary
         
-        # 3. Show Download Button if note exists
+        # 2. The Download Button (Only shows if note exists)
         if 'latest_discharge_note' in st.session_state:
-            st.success("Note Generated!")
+            st.success("Note Ready!")
             st.download_button(
                 label="📥 Download Medical Summary",
-                data=st.session_state['latest_discharge_note'],
+                data=st.session_state['latest_discharge_note'], # <--- This was the fix!
                 file_name=f"discharge_summary_{data.get('id')}.txt",
                 mime="text/plain"
-            )        
-        # 2. Create the Download Button
-        st.download_button(
-            label="📥 Export Summary",
-            data=report_text,
-            file_name=f"patient_summary.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
+            )
 
     # --- METRICS (With Tooltips) ---
     m1, m2, m3, m4 = st.columns(4)
@@ -363,7 +354,6 @@ def render_dashboard():
     with col_queue:
         st.markdown("#### 📋 Patient Status")
         st.info(f"Current Status: {data.get('status', 'Unknown')}")
-
 # --- MODULE 4: BATCH ANALYSIS (CSV) ---
 def render_batch_analysis():
     st.subheader("Bulk Patient Processing & Diagnostic Triage")
