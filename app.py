@@ -593,73 +593,42 @@ def render_batch_analysis():
                 
         except Exception as e:
             st.error(f"Error processing CSV: {e}")
-# --- MODULE 5: MEDICATION CHECKER (HYBRID AI) ---
+# --- MODULE 5: MEDICATION CHECKER (SIMPLE LAYOUT + AI) ---
 def render_medication_checker():
     st.subheader("💊 Drug-Drug Interaction Checker")
-    st.caption("Hybrid System: Database Check + AI Pharmacist Analysis")
+    st.caption("Checks for Critical and Major interactions from backend database + AI Analysis.")
     
-    # 1. Input: Allow multiple drugs
-    col_input, col_list = st.columns([2, 1])
-    
-    with col_input:
-        new_drug = st.text_input("Enter Drug Name (e.g., Warfarin)", key="drug_input")
-        if st.button("➕ Add Drug"):
-            if new_drug:
-                if 'drug_list' not in st.session_state:
-                    st.session_state['drug_list'] = []
-                st.session_state['drug_list'].append(new_drug)
-                st.rerun() # Refresh to show the list
+    # 1. Simple 2-Drug Input (Restored)
+    col_d1, col_d2 = st.columns(2)
+    d1 = col_d1.text_input("Drug A", placeholder="e.g. Warfarin")
+    d2 = col_d2.text_input("Drug B", placeholder="e.g. Ibuprofen")
 
-    with col_list:
-        st.markdown("#### 📋 Current List")
-        if 'drug_list' in st.session_state and st.session_state['drug_list']:
-            for i, drug in enumerate(st.session_state['drug_list']):
-                st.write(f"{i+1}. {drug}")
-            
-            if st.button("🗑️ Clear List"):
-                st.session_state['drug_list'] = []
-                st.rerun()
-        else:
-            st.info("No drugs added yet.")
-
-    st.divider()
-
-    # 2. LOGIC: Check Database & AI
-    if 'drug_list' in st.session_state and len(st.session_state['drug_list']) >= 2:
-        drug_list = st.session_state['drug_list']
-        
-        # A. DATABASE CHECK (Deterministic Safety)
-        st.markdown("#### 🔍 Database Screening")
-        found_interaction = False
-        
-        # Check every pair in the list
-        import itertools
-        for d1, d2 in itertools.combinations(drug_list, 2):
-            res = bk.check_interaction(d1, d2)
-            if "No high-alert" not in res:
-                if "CRITICAL" in res:
-                    st.error(f"❌ **{d1} + {d2}:** {res}")
-                elif "MAJOR" in res:
-                    st.warning(f"⚠️ **{d1} + {d2}:** {res}")
-                else:
-                    st.info(f"ℹ️ **{d1} + {d2}:** {res}")
-                found_interaction = True
-        
-        if not found_interaction:
-            st.success("✅ No high-alert interactions found in local database.")
-
+    if d1 and d2:
         st.divider()
+        
+        # A. Database Check (Instant & Safe)
+        res = bk.check_interaction(d1, d2)
+        
+        # Dynamic Styling
+        if "CRITICAL" in res: 
+            st.error(f"❌ {res}")
+        elif "MAJOR" in res: 
+            st.warning(f"⚠️ {res}")
+        elif "MODERATE" in res: 
+            st.info(f"ℹ️ {res}")
+        else: 
+            st.success(res)
 
-        # B. AI ANALYSIS (Generative Insight)
+        # B. AI Analysis Button (The Upgrade)
         st.markdown("#### 🧠 AI Pharmacist Analysis")
-        if st.button("⚡ Analyze Complex Interactions"):
+        st.caption("Get a detailed explanation of the mechanism and management.")
+        
+        if st.button("⚡ Analyze Interaction with AI"):
             with st.spinner("Consulting AI Pharmacist..."):
-                ai_report = bk.analyze_drug_interactions(drug_list)
+                # Reuse the list-based function by passing a list of 2
+                ai_report = bk.analyze_drug_interactions([d1, d2])
                 st.markdown(ai_report)
                 st.caption("⚠️ AI-Generated. Verify with standard drug compendiums.")
-    
-    elif 'drug_list' in st.session_state and len(st.session_state['drug_list']) == 1:
-        st.warning("⚠️ Please add at least one more drug to check for interactions.")
 # --- MODULE 6: CHATBOT ---
 def render_chatbot():
     st.subheader("AI Clinical Assistant")
