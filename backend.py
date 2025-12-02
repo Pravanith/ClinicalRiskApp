@@ -65,6 +65,8 @@ def load_bleeding_model():
     else:
         return DummyModel()
 
+# --- ADD THESE TO BACKEND.PY ---
+
 def calculate_news2(resp_rate, o2_sat, sys_bp, hr, temp_c, altered_mental):
     """
     Calculates NEWS-2 Score (National Early Warning Score).
@@ -123,7 +125,6 @@ def calculate_has_bled(sys_bp, renal_disease, liver_disease, gi_bleed_hx, inr, a
     if meds_nsaid or meds_anticoag: score += 1
     
     return score
-
 # ==========================================
 # 4. FULL INTERACTION DATABASE
 # ==========================================
