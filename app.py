@@ -593,12 +593,11 @@ def render_batch_analysis():
                 
         except Exception as e:
             st.error(f"Error processing CSV: {e}")
-# --- MODULE 5: MEDICATION CHECKER (SIMPLE LAYOUT + AI) ---
+# --- MODULE 5: MEDICATION CHECKER (SAFETY UPDATE) ---
 def render_medication_checker():
     st.subheader("💊 Drug-Drug Interaction Checker")
     st.caption("Checks for Critical and Major interactions from backend database + AI Analysis.")
     
-    # 1. Simple 2-Drug Input (Restored)
     col_d1, col_d2 = st.columns(2)
     d1 = col_d1.text_input("Drug A", placeholder="e.g. Warfarin")
     d2 = col_d2.text_input("Drug B", placeholder="e.g. Ibuprofen")
@@ -606,26 +605,29 @@ def render_medication_checker():
     if d1 and d2:
         st.divider()
         
-        # A. Database Check (Instant & Safe)
+        # 1. Database Check (Deterministic)
         res = bk.check_interaction(d1, d2)
         
-        # Dynamic Styling
-        if "CRITICAL" in res: 
-            st.error(f"❌ {res}")
-        elif "MAJOR" in res: 
-            st.warning(f"⚠️ {res}")
-        elif "MODERATE" in res: 
-            st.info(f"ℹ️ {res}")
+        if res:
+            # Known Interaction Found
+            if "CRITICAL" in res: 
+                st.error(f"❌ {res}")
+            elif "MAJOR" in res: 
+                st.warning(f"⚠️ {res}")
+            elif "MODERATE" in res: 
+                st.info(f"ℹ️ {res}")
         else: 
-            st.success(res)
+            # NEW SAFETY LOGIC: Not in Database
+            st.warning(f"⚠️ **{d1}** + **{d2}** not found in the high-alert database.")
+            st.markdown("👉 **Recommendation:** This does not guarantee safety. Please use the **AI Pharmacist** below for a comprehensive check.")
 
-        # B. AI Analysis Button (The Upgrade)
+        # 2. AI Analysis Button
+        st.divider()
         st.markdown("#### 🧠 AI Pharmacist Analysis")
-        st.caption("Get a detailed explanation of the mechanism and management.")
+        st.caption("Get a detailed explanation of mechanism, management, and safety profile.")
         
         if st.button("⚡ Analyze Interaction with AI"):
             with st.spinner("Consulting AI Pharmacist..."):
-                # Reuse the list-based function by passing a list of 2
                 ai_report = bk.analyze_drug_interactions([d1, d2])
                 st.markdown(ai_report)
                 st.caption("⚠️ AI-Generated. Verify with standard drug compendiums.")
