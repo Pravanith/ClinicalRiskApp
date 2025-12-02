@@ -253,47 +253,122 @@ def render_risk_calculator():
 
         st.divider()
         
-        # CLINICAL ALERTS
-        st.markdown("### ⚠️ Clinical Alerts & AI Assessment")
+        # --- CLINICAL ALERTS (MASTER LOGIC ENGINE) ---
+        st.markdown("### ⚠️ Clinical Alerts & Protocol Violations")
+        
+        # Counter to track how sick the patient is
         violations = 0 
         
-        # Check > 0 ensures defaults don't trigger "Low" alerts
-        if res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 88: 
-            st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%) - Secure Airway Immediately!")
-            violations += 1
-        elif res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 92:
-            st.warning(f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%) - Oxygen Therapy Indicated")
-            violations += 1
+        # Using .get() with default 0 ensures the app doesn't crash if a value is missing
+        v_o2 = res.get('o2_sat', 0)
+        v_sbp = res.get('sys_bp', 0)
+        v_dbp = res.get('dia_bp', 0)
+        v_hr = res.get('hr', 0)
+        v_rr = res.get('resp_rate', 0)
+        v_temp = res.get('temp_c', 0)
         
-        if res.get('resp_rate', 0) > 30:
-            st.error(f"🚨 SEVERE TACHYPNEA (RR {res['resp_rate']})")
-            violations += 1
+        l_gluc = res.get('glucose', 0)
+        l_k = res.get('potassium', 0)
+        l_creat = res.get('creat', 0)
+        l_lact = res.get('lactate', 0)
+        l_inr = res.get('inr', 0)
+        l_wbc = res.get('wbc', 0)
+        l_plt = res.get('platelets', 0)
+        l_hgb = res.get('hgb', 0)
 
-        if res.get('sys_bp', 0) > 180 or res.get('dia_bp', 0) > 120: 
-            st.error(f"🚨 HYPERTENSIVE CRISIS (BP {res['sys_bp']}/{res['dia_bp']})")
-            violations += 1
-        elif res.get('sys_bp', 0) > 0 and res.get('sys_bp', 0) < 90: 
-            st.error(f"🚨 SHOCK / HYPOTENSION (BP {res['sys_bp']}/{res['dia_bp']})")
-            violations += 1
-        elif res.get('dia_bp', 0) > 0 and res.get('dia_bp', 0) < 40:
-            st.error(f"🚨 CRITICAL DIASTOLIC HYPOTENSION (Dia {res['dia_bp']})")
-            violations += 1
+        # 1. AIRWAY & BREATHING
+        # Note: We check > 0 to ignore empty fields
+        if v_o2 > 0:
+            if v_o2 < 88:
+                st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {v_o2}%) - Risk of Respiratory Arrest. Secure Airway.")
+                violations += 1
+            elif v_o2 < 93:
+                st.warning(f"⚠️ Hypoxia (SpO2 {v_o2}%) - Supplemental Oxygen Required.")
+                violations += 1
+        
+        if v_rr > 0:
+            if v_rr > 30:
+                st.error(f"🚨 SEVERE TACHYPNEA (RR {v_rr}) - Sign of Respiratory Distress/Acidosis.")
+                violations += 1
+            elif v_rr < 8:
+                st.error(f"🚨 RESPIRATORY DEPRESSION (RR {v_rr}) - Check for Opioid Overdose.")
+                violations += 1
 
-        if res.get('creat', 0) > 3.0: 
-            st.error(f"🚨 ACUTE RENAL FAILURE (Cr {res['creat']})")
-            violations += 1
-        
-        if res.get('potassium', 0) > 6.0:
-            st.error(f"🚨 CRITICAL HYPERKALEMIA (K+ {res['potassium']})")
-            violations += 1
-        
+        # 2. CIRCULATION (Hemodynamics)
+        if v_sbp > 0:
+            if v_sbp > 180:
+                st.error(f"🚨 HYPERTENSIVE CRISIS (SBP {v_sbp}) - Risk of Stroke/MI.")
+                violations += 1
+            elif v_sbp < 90:
+                st.error(f"🚨 SHOCK / HYPOTENSION (SBP {v_sbp}) - Check for Sepsis or Hemorrhage.")
+                violations += 1
+
+        if v_dbp > 0:
+            if v_dbp > 120:
+                st.error(f"🚨 HYPERTENSIVE EMERGENCY (DBP {v_dbp}) - End Organ Damage Risk.")
+                violations += 1
+            elif v_dbp < 50:
+                st.warning(f"⚠️ Wide Pulse Pressure (DBP {v_dbp}) - Check Perfusion.")
+                violations += 1
+                
+        if v_hr > 0:
+            if v_hr > 130:
+                st.error(f"🚨 UNSTABLE TACHYCARDIA (HR {v_hr}) - Risk of Cardiac Failure.")
+                violations += 1
+            elif v_hr < 40:
+                st.error(f"🚨 UNSTABLE BRADYCARDIA (HR {v_hr}) - Risk of Cardiac Arrest.")
+                violations += 1
+
+        # 3. METABOLIC & RENAL
+        if l_gluc > 0:
+            if l_gluc < 70:
+                st.error(f"🚨 HYPOGLYCEMIA ({l_gluc} mg/dL) - Seizure/Coma Risk. Give Dextrose.")
+                violations += 1
+            elif l_gluc > 400:
+                st.error(f"🚨 SEVERE HYPERGLYCEMIA ({l_gluc} mg/dL) - Rule out DKA/HHS.")
+                violations += 1
+
+        if l_k > 0:
+            if l_k > 6.0:
+                st.error(f"🚨 CRITICAL HYPERKALEMIA ({l_k} mmol/L) - IMMEDIATE CARDIAC ARREST RISK.")
+                violations += 1
+            elif l_k < 2.5:
+                st.error(f"🚨 CRITICAL HYPOKALEMIA ({l_k} mmol/L) - Arrhythmia Risk.")
+                violations += 1
+                
+        if l_creat > 0:
+            if l_creat > 3.0:
+                st.error(f"🚨 ACUTE RENAL FAILURE (Cr {l_creat}) - Dialysis may be needed.")
+                violations += 1
+            elif l_creat > 1.5:
+                st.warning(f"⚠️ Acute Kidney Injury Warning (Cr {l_creat}).")
+                violations += 1
+
+        # 4. SEPSIS & INFECTION
         if res.get('sepsis_risk', 0) >= 2:
-             st.error("🚨 SEPSIS ALERT: qSOFA Score ≥ 2")
+             st.error("🚨 SEPSIS ALERT: qSOFA Score ≥ 2 (High Mortality Risk). Activate Sepsis Protocol.")
              violations += 1
+             
+        if l_lact > 2.0:
+            st.error(f"🚨 LACTIC ACIDOSIS ({l_lact} mmol/L) - Indicator of Septic Shock/Tissue Hypoxia.")
+            violations += 1
 
+        # 5. HEMATOLOGY / BLEEDING
+        if l_inr > 0 and l_inr > 4.0:
+            st.error(f"🚨 CRITICAL INR ({l_inr}) - High risk of spontaneous hemorrhage.")
+            violations += 1
+            
+        if l_plt > 0 and l_plt < 50:
+            st.error(f"🚨 CRITICAL THROMBOCYTOPENIA (Plt {l_plt}) - Severe Bleeding Risk.")
+            violations += 1
+            
+        if l_hgb > 0 and l_hgb < 7.0:
+            st.error(f"🚨 CRITICAL ANEMIA (Hgb {l_hgb}) - Transfusion indicated.")
+            violations += 1
+
+        # --- SAFE CHECK ---
         if violations == 0:
-            st.success("✅ No immediate Life-Threatening Protocol violations detected.")
-
+            st.success("✅ Patient Vitals & Labs are within safe limits. No immediate protocols triggered.")
         st.divider()
         c_ai, c_txt = st.columns([1, 3])
         with c_ai:
