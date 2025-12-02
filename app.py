@@ -346,20 +346,78 @@ def render_risk_calculator():
     else:
         st.info("👈 Fill out the patient data form above and click 'Run Clinical Analysis' to see results.")
         
-# --- MODULE 2: PATIENT HISTORY (SQL) ---
+# --- MODULE 2: PATIENT HISTORY (PRO UI) ---
 def render_history_sql():
     st.subheader("🗄️ Patient History Database")
+    
+    # Fetch Data
     df = bk.fetch_history()
+    
     if not df.empty:
-        st.dataframe(df, use_container_width=True)
-        st.markdown("### 📊 Cohort Analytics")
-        c1, c2 = st.columns(2)
-        c1.bar_chart(df['aki_risk_score'])
-        c2.scatter_chart(df, x='age', y='sbp')
+        # 1. Format the DataFrame for Display
+        # Convert timestamp to cleaner format if it exists
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M')
+
+        # 2. Create a Styling Function for Risk Scores
+        def highlight_risk(val):
+            if isinstance(val, (int, float)):
+                if val > 50: return 'background-color: #ffcdd2; color: black;' # Red
+                if val > 20: return 'background-color: #fff9c4; color: black;' # Yellow
+            return ''
+
+        # 3. Configure Columns (The "Pro" Look)
+        st.dataframe(
+            df,
+            column_config={
+                "timestamp": st.column_config.TextColumn("📅 Date & Time", width="medium"),
+                "age": st.column_config.NumberColumn("👤 Age", format="%d yrs"),
+                "gender": st.column_config.TextColumn("⚧ Gender", width="small"),
+                "sbp": st.column_config.NumberColumn("❤️ SBP", format="%d mmHg"),
+                "aki_risk_score": st.column_config.ProgressColumn(
+                    "💧 AKI Risk", 
+                    format="%d%%", 
+                    min_value=0, 
+                    max_value=100,
+                    help="Acute Kidney Injury Probability"
+                ),
+                "bleeding_risk_score": st.column_config.ProgressColumn(
+                    "🩸 Bleed Risk", 
+                    format="%.1f%%", 
+                    min_value=0, 
+                    max_value=100,
+                    help="Hemorrhage Risk Score"
+                ),
+                "status": st.column_config.TextColumn("🏥 Status"),
+            },
+            use_container_width=True,
+            height=400,
+            hide_index=True
+        )
+
+        st.divider()
         
-        if st.button("🗑️ Clear Database"):
-            bk.clear_history()
-            st.rerun()
+        # 4. Analytics Section (Visuals)
+        st.markdown("### 📈 Cohort Analytics")
+        c1, c2 = st.columns(2)
+        
+        with c1:
+            st.caption("Risk Distribution by Age")
+            st.scatter_chart(df, x='age', y='bleeding_risk_score', color='status', height=250)
+            
+        with c2:
+            st.caption("Average Vitals Trend")
+            # Create a simple trend if we have multiple entries
+            if len(df) > 1:
+                st.line_chart(df.set_index('timestamp')['sbp'], height=250)
+            else:
+                st.info("Need more data for trend analysis.")
+
+        # 5. Admin Actions
+        with st.expander("⚙️ Database Management"):
+            if st.button("🗑️ Clear All Records", type="secondary"):
+                bk.clear_history()
+                st.rerun()
     else:
         st.info("📭 Database is empty. Run a Risk Analysis to create records.")
 
