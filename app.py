@@ -66,7 +66,7 @@ def render_cover_page():
         st.session_state['entered_app'] = True
         st.rerun()
 
-# --- MODULE 1: RISK CALCULATOR (ULTIMATE EDITION) ---
+# --- MODULE 1: RISK CALCULATOR (US HOSPITAL STANDARDS) ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator")
     
@@ -75,11 +75,9 @@ def render_risk_calculator():
         st.markdown("#### 📝 Patient Data Entry")
         
         with st.form("risk_form"):
-            
-            # Split Screen Layout
             col_left, col_right = st.columns([1, 1], gap="medium")
             
-            # --- LEFT COLUMN: Demographics & Vitals ---
+            # --- LEFT COLUMN ---
             with col_left:
                 st.markdown("##### 👤 Patient Profile")
                 l1, l2 = st.columns(2)
@@ -90,15 +88,11 @@ def render_risk_calculator():
                 weight_input = w_val.number_input("Weight", 0.0, 400.0, 0.0)
                 weight_scale = w_unit.selectbox("Unit", ["kg", "lbs"], key="w_unit")
                 
-                # Add Height
+                weight_kg = weight_input * 0.453592 if weight_scale == "lbs" else weight_input
                 height = st.number_input("Height (cm)", 0, 250, 0)
                 
-                # Weight Logic
-                weight_kg = weight_input * 0.453592 if weight_scale == "lbs" else weight_input
-                if height > 0:
-                    bmi = weight_kg / ((height/100)**2)
-                else:
-                    bmi = 0.0
+                if height > 0: bmi = weight_kg / ((height/100)**2)
+                else: bmi = 0.0
 
                 st.markdown("##### 🩺 Vitals")
                 v1, v2 = st.columns(2)
@@ -113,10 +107,9 @@ def render_risk_calculator():
                 temp_c = v5.number_input("Temp °C (Normal: 36.5-37.5)", 0.0, 45.0, 0.0, step=0.1)
                 o2_sat = v6.number_input("O2 Sat % (Normal: >95%)", 0, 100, 0)
 
-            # --- RIGHT COLUMN: Labs & History ---
+            # --- RIGHT COLUMN ---
             with col_right:
                 st.markdown("##### 🧪 Critical Labs")
-                
                 lab1, lab2 = st.columns(2)
                 creat = lab1.number_input("Creatinine (0.6-1.2 mg/dL)", 0.0, 20.0, 0.0)
                 bun = lab2.number_input("Blood Urea Nitrogen (7-20)", 0, 100, 0)
@@ -165,21 +158,19 @@ def render_risk_calculator():
     # --- LOGIC & RESULTS ---
     if submitted:
         final_temp_c = temp_c 
-        
-        # Calculate Hemodynamics
         if sys_bp > 0:
             map_val = (sys_bp + (2 * dia_bp)) / 3 
+            # Shock Index (HR/SBP) - Indicator of occult shock
+            shock_index = hr / sys_bp
+            # Pulse Pressure (SBP-DBP) - Indicator of arterial stiffness/Heart failure
             pulse_pressure = sys_bp - dia_bp
-            shock_index = hr / sys_bp if sys_bp > 0 else 0
         else:
             map_val = 0
-            pulse_pressure = 0
             shock_index = 0
+            pulse_pressure = 0
             
-        bun_creat_ratio = bun / creat if creat > 0 else 0
         is_high_bp = 1 if sys_bp > 140 else 0
         
-        # --- GLOBAL ZERO CHECK ---
         if age > 0 and sys_bp > 0:
             input_df = pd.DataFrame({
                 'age': [age], 'inr': [inr], 'anticoagulant': [1 if anticoag else 0],
@@ -190,25 +181,21 @@ def render_risk_calculator():
             pred_bleeding = bleeding_model.predict(input_df)[0]
             pred_aki = bk.calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
             pred_sepsis = bk.calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
-            pred_hypo = bk.calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
-            sirs_score = bk.calculate_sirs_score(final_temp_c, hr, resp_rate, wbc)
             
-            has_bled = 0
-            if sys_bp > 160: has_bled += 1
-            if creat > 2.2 or liver_disease: has_bled += 1
-            if gi_bleed: has_bled += 1
-            if inr > 1.0: has_bled += 1
-            if age > 65: has_bled += 1
-            if nsaid or anticoag: has_bled += 1
+            # NEW: Calculate NEWS-2 Score (The Standard)
+            news2_score = bk.calculate_news2(resp_rate, o2_sat, sys_bp, hr, final_temp_c, altered_mental)
+            
+            # NEW: Calculate HAS-BLED Score (The Standard)
+            has_bled_score = bk.calculate_has_bled(sys_bp, (creat>2.2), liver_disease, gi_bleed, inr, age, nsaid, anticoag)
+            
         else:
             pred_bleeding = 0.0
             pred_aki = 0
             pred_sepsis = 0
-            pred_hypo = 0
-            sirs_score = 0
-            has_bled = 0
+            news2_score = 0
+            has_bled_score = 0
 
-        status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis >= 2) else 'Stable'
+        status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or news2_score >= 5) else 'Stable'
         
         bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
         
@@ -220,111 +207,98 @@ def render_risk_calculator():
             'creat': creat, 'potassium': potassium, 'inr': inr, 'bun': bun,
             'wbc': wbc, 'hgb': hgb, 'platelets': platelets, 'lactate': lactate, 'glucose': glucose,
             'bleeding_risk': float(pred_bleeding), 'aki_risk': int(pred_aki),
-            'sepsis_risk': int(pred_sepsis), 'hypo_risk': int(pred_hypo),
-            'sirs_score': sirs_score, 'status': status_calc, 'map_val': map_val, 'bmi': bmi, 'has_bled': has_bled,
-            'shock_index': shock_index, 'pulse_pressure': pulse_pressure, 'bun_creat_ratio': bun_creat_ratio
+            'sepsis_risk': int(pred_sepsis),
+            'news2_score': int(news2_score), # NEW
+            'has_bled': int(has_bled_score), # NEW
+            'status': status_calc, 'map_val': map_val, 'bmi': bmi,
+            'shock_index': shock_index, 'pulse_pressure': pulse_pressure
         }
         
         st.session_state['analysis_results'] = st.session_state['patient_data']
 
-    # --- RESULTS DISPLAY ---
+    # --- RESULTS DISPLAY (UPDATED FOR US STANDARDS) ---
     if 'analysis_results' in st.session_state:
         res = st.session_state['analysis_results']
         
         st.divider()
-        st.subheader("📊 Risk Stratification Results")
+        st.subheader("📊 Standardized Risk Stratification")
         
-        # ROW 1: Major Risks
+        # ROW 1: The "Big 4" Clinical Scores
         r1, r2, r3, r4 = st.columns(4)
-        r1.metric("🩸 Bleeding Risk", f"{res['bleeding_risk']:.1f}%", 
-                 "High" if res['bleeding_risk'] > 50 else "Normal", help="XGBoost Prediction")
-        r2.metric("💧 AKI Risk", f"{res['aki_risk']}%", 
-                 "High" if res['aki_risk'] > 50 else "Normal", help="KDIGO Criteria")
-        r3.metric("🦠 Sepsis Score", f"{res['sepsis_risk']}", 
-                 "Alert" if res['sepsis_risk'] >= 2 else "Normal", help="qSOFA Score")
+        
+        # 1. NEWS-2 (Overall Deterioration)
+        news = res.get('news2_score', 0)
+        r1.metric("🚨 NEWS-2 Score", f"{news}", 
+                 "Critical" if news >= 7 else ("Urgent" if news >= 5 else "Stable"),
+                 help="National Early Warning Score. 5-6: Urgent. 7+: Critical.")
+        
+        # 2. qSOFA (Sepsis)
+        qsofa = res.get('sepsis_risk', 0)
+        r2.metric("🦠 qSOFA (Sepsis)", f"{qsofa}/3", 
+                 "High Risk" if qsofa >= 2 else "Low Risk", help="Quick Sepsis Score. ≥2 suggests high mortality.")
+        
+        # 3. HAS-BLED (Bleeding)
+        bled = res.get('has_bled', 0)
+        r3.metric("🩸 HAS-BLED", f"{bled}/9", 
+                 "High Risk" if bled >= 3 else "Low Risk", help="Std Bleeding Risk Score (HTN, Renal, Age, etc.)")
+        
+        # 4. AI Bleeding (Your Machine Learning)
+        r4.metric("🤖 AI Bleed Prediction", f"{res.get('bleeding_risk', 0):.1f}%", 
+                 "Elevated" if res.get('bleeding_risk') > 20 else "Low", help="XGBoost Model Prediction")
+
+        # ROW 2: Hemodynamics & Physiology
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("MAP", f"{int(res.get('map_val', 0))} mmHg", 
+                 "Low" if res.get('map_val', 0) < 65 else "Normal", help="Mean Arterial Pressure (>65 required)")
+        
+        si = res.get('shock_index', 0)
+        d2.metric("💔 Shock Index", f"{si:.2f}", 
+                 "Critical" if si > 0.9 else "Normal", help="HR / SBP. >0.9 indicates occult shock.")
         
         # Smart Glycemic Metric
         current_gluc = res.get('glucose', 0)
         if current_gluc > 180:
-             r4.metric("🍬 Glycemia", f"{int(current_gluc)} mg/dL", "Hyper (High)", delta_color="inverse")
+             d3.metric("🍬 Glycemia", f"{int(current_gluc)} mg/dL", "Hyper (High)", delta_color="inverse")
         elif current_gluc > 0 and current_gluc < 70:
-             r4.metric("🍬 Glycemia", f"{int(current_gluc)} mg/dL", "Hypo (Low)", delta_color="inverse")
+             d3.metric("🍬 Glycemia", f"{int(current_gluc)} mg/dL", "Hypo (Low)", delta_color="inverse")
         else:
-             r4.metric("🍬 Hypo Risk", f"{res.get('hypo_risk', 0)}%", "Normal")
+             d3.metric("🍬 Glycemia", "Normal", "Stable")
 
-        # ROW 2: Advanced Hemodynamics (New!)
-        h1, h2, h3, h4 = st.columns(4)
-        h1.metric("MAP", f"{int(res.get('map_val', 0))} mmHg", help="Mean Arterial Pressure")
-        h2.metric("⚡ SIRS Score", f"{res.get('sirs_score', 0)}/4", help="Inflammatory Response")
-        h3.metric("💔 Shock Index", f"{res.get('shock_index', 0):.2f}", "Critical" if res.get('shock_index', 0) > 0.9 else "Normal", help="HR / SBP")
-        h4.metric("💓 Pulse Pressure", f"{int(res.get('pulse_pressure', 0))}", "Wide" if res.get('pulse_pressure', 0) > 60 else "Normal", help="SBP - DBP")
+        d4.metric("BMI", f"{res.get('bmi', 0):.1f}")
 
         st.divider()
         
-        # --- CLINICAL ALERTS (UPDATED) ---
-        st.markdown("### ⚠️ Clinical Alerts & AI Assessment")
+        # CLINICAL ALERTS (With Diastolic Check)
+        st.markdown("### ⚠️ Clinical Alerts")
         violations = 0 
         
-        # 1. Airway/Breathing
-        if res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 88: 
+        if res.get('o2_sat', 100) > 0 and res.get('o2_sat', 100) < 88: 
             st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%) - Secure Airway Immediately!")
             violations += 1
-        elif res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 92:
-            st.warning(f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%) - Oxygen Therapy Indicated")
-            violations += 1
         
-        if res.get('resp_rate', 0) > 30:
-            st.error(f"🚨 SEVERE TACHYPNEA (RR {res['resp_rate']})")
-            violations += 1
-
-        # 2. Circulation (Includes Diastolic Check!)
         if res.get('sys_bp', 0) > 180 or res.get('dia_bp', 0) > 120: 
             st.error(f"🚨 HYPERTENSIVE CRISIS (BP {res['sys_bp']}/{res['dia_bp']})")
             violations += 1
         elif res.get('sys_bp', 0) > 0 and res.get('sys_bp', 0) < 90: 
-            st.error(f"🚨 SHOCK / HYPOTENSION (BP {res['sys_bp']}/{res['dia_bp']})")
+            st.error(f"🚨 SHOCK / HYPOTENSION (BP {res['sys_bp']})")
             violations += 1
         elif res.get('dia_bp', 0) > 0 and res.get('dia_bp', 0) < 40:
             st.error(f"🚨 CRITICAL DIASTOLIC HYPOTENSION (Dia {res['dia_bp']})")
             violations += 1
-            
-        if res.get('hr', 0) > 130:
-            st.error(f"🚨 SEVERE TACHYCARDIA (HR {res['hr']})")
-            violations += 1
-        elif res.get('hr', 0) > 0 and res.get('hr', 0) < 40:
-            st.error(f"🚨 SEVERE BRADYCARDIA (HR {res['hr']})")
-            violations += 1
 
-        # 3. Labs
         if res.get('creat', 0) > 3.0: 
             st.error(f"🚨 ACUTE RENAL FAILURE (Cr {res['creat']})")
             violations += 1
-        
         if res.get('potassium', 0) > 6.0:
             st.error(f"🚨 CRITICAL HYPERKALEMIA (K+ {res['potassium']})")
             violations += 1
             
-        if res.get('inr', 0) > 4.0:
-            st.error(f"🚨 CRITICAL INR ({res['inr']}) - Bleed Risk")
+        if res.get('news2_score', 0) >= 7:
+            st.error(f"🚨 NEWS-2 CRITICAL (Score: {res['news2_score']}) - Immediate Response Required")
             violations += 1
-        
-        # Glucose Logic (Hypo AND Hyper)
-        if res.get('glucose', 0) > 400:
-            st.error(f"🚨 SEVERE HYPERGLYCEMIA ({res['glucose']} mg/dL) - Check Ketones/DKA")
-            violations += 1
-        elif res.get('glucose', 0) > 180:
-            st.warning(f"⚠️ Hyperglycemia ({res['glucose']} mg/dL) - Monitor")
-            violations += 1
-        elif res.get('glucose', 0) > 0 and res.get('glucose', 0) < 70:
-            st.error(f"🚨 HYPOGLYCEMIA ({res['glucose']} mg/dL) - Give Dextrose")
-            violations += 1
-
-        if res.get('sepsis_risk', 0) >= 2:
-             st.error("🚨 SEPSIS ALERT: qSOFA Score ≥ 2")
-             violations += 1
 
         if violations == 0:
-            st.success("✅ No immediate Life-Threatening Protocol violations detected.")
+            st.success("✅ Patient Stable. No critical alerts.")
 
         st.divider()
         c_ai, c_txt = st.columns([1, 3])
@@ -334,8 +308,7 @@ def render_risk_calculator():
                 with st.spinner("Thinking..."):
                     ai_context = {
                         'age': res['age'], 'sbp': res['sys_bp'], 
-                        'bleeding_risk': res['bleeding_risk'], 'aki_risk': res['aki_risk'],
-                        'shock_index': res['shock_index']
+                        'news2': res['news2_score'], 'bleeding_risk': res['bleeding_risk']
                     }
                     response = bk.consult_ai_doctor("risk_assessment", "", ai_context)
                     st.session_state['ai_result'] = response
