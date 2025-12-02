@@ -4,6 +4,8 @@ import numpy as np
 import xgboost as xgb
 import os
 import re
+import google.generativeai as genai
+import streamlit as st
 
 # ==========================================
 # 1. DATABASE MANAGEMENT
@@ -48,6 +50,28 @@ def clear_history():
     conn.execute("DELETE FROM patient_history")
     conn.commit()
     conn.close()
+def get_latest_patient():
+    """Fetches the most recent patient record from the DB to restore state."""
+    if not os.path.exists('clinical_data.db'):
+        return None
+    conn = sqlite3.connect('clinical_data.db')
+    try:
+        df = pd.read_sql("SELECT * FROM patient_history ORDER BY timestamp DESC LIMIT 1", conn)
+        conn.close()
+        if not df.empty:
+            row = df.iloc[0]
+            return {
+                'id': f"Restored-{str(row['timestamp'])[11:16]}", 
+                'age': int(row['age']),
+                'bleeding_risk': float(row['bleeding_risk_score']),
+                'aki_risk': int(row['aki_risk_score']),
+                'status': row['status'],
+                'hypo_risk': 0, 
+                'sepsis_risk': 0
+            }
+        return None
+    except:
+        return None
 
 # ==========================================
 # 2. AI MODEL LOADING
@@ -65,45 +89,81 @@ def load_bleeding_model():
     else:
         return DummyModel()
 
-# --- ADD THESE TO BACKEND.PY ---
-
-def calculate_news2(resp_rate, o2_sat, sys_bp, hr, temp_c, altered_mental):
-    """
-    Calculates NEWS-2 Score (National Early Warning Score).
-    Standard tool for detecting clinical deterioration.
-    """
+# ==========================================
+# 3. CLINICAL CALCULATORS (LOGIC)
+# ==========================================
+def calculate_aki_risk(age, diuretic, acei, sys_bp, chemo, creat, nsaid, heart_failure):
+    """Calculates Acute Kidney Injury risk based on KDIGO criteria."""
     score = 0
+    # Risk Factors
+    score += 30 if diuretic else 0
+    score += 40 if acei else 0
+    score += 25 if nsaid else 0
+    score += 15 if heart_failure else 0
+    score += 20 if chemo else 0
+    # Vitals & Demographics
+    if age > 0: score += 20 if age > 75 else 0
+    if sys_bp > 0:
+        score += 10 if sys_bp > 160 else 0
+        score += 20 if sys_bp < 90 else 0
+    if creat > 0:
+        if creat > 1.5: score += 30
+        elif creat > 1.2: score += 15
+    return min(score, 100)
+
+def calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, temp_c):
+    """Calculates qSOFA Score."""
+    qsofa = 0
+    if sys_bp > 0 and sys_bp <= 100: qsofa += 1
+    if resp_rate > 0 and resp_rate >= 22: qsofa += 1
+    if altered_mental: qsofa += 1
+    if temp_c > 0 and (temp_c > 38.0 or temp_c < 36.0): qsofa += 0.5
     
-    # 1. Respiratory Rate
-    if resp_rate <= 8 or resp_rate >= 25: score += 3
-    elif resp_rate >= 21: score += 2
-    elif resp_rate <= 11: score += 1
-    
-    # 2. Oxygen Saturation (Scale 1)
-    if o2_sat <= 91: score += 3
-    elif o2_sat <= 93: score += 2
-    elif o2_sat <= 95: score += 1
-    
-    # 3. Systolic BP
-    if sys_bp <= 90 or sys_bp >= 220: score += 3
-    elif sys_bp <= 100: score += 2
-    elif sys_bp <= 110: score += 1
-    
-    # 4. Heart Rate
-    if hr <= 40 or hr >= 131: score += 3
-    elif hr >= 111: score += 2
-    elif hr <= 50 or hr >= 91: score += 1
-    
-    # 5. Consciousness (Alert vs Confusion)
-    if altered_mental: score += 3
-    
-    # 6. Temperature
-    if temp_c <= 35.0: score += 3
-    elif temp_c >= 39.1: score += 2
-    elif temp_c <= 36.0 or temp_c >= 38.1: score += 1
-    
+    if qsofa >= 2: return 90
+    if qsofa >= 1: return 45
+    return 0
+
+def calculate_hypoglycemic_risk(insulin, renal, hba1c_high, recent_dka):
+    score = 0
+    score += 30 if insulin else 0
+    score += 45 if renal else 0
+    score += 20 if hba1c_high else 0
+    score += 20 if recent_dka else 0 
+    return min(score, 100)
+
+def calculate_sirs_score(temp_c, hr, resp_rate, wbc):
+    score = 0
+    if temp_c > 0 and (temp_c > 38 or temp_c < 36): score += 1
+    if hr > 0 and hr > 90: score += 1
+    if resp_rate > 0 and resp_rate > 20: score += 1
+    if wbc > 0 and (wbc > 12 or wbc < 4): score += 1
     return score
 
+def calculate_news2(resp_rate, o2_sat, sys_bp, hr, temp_c, altered_mental):
+    """Standard NEWS-2 Score Calculation"""
+    score = 0
+    if resp_rate > 0:
+        if resp_rate <= 8 or resp_rate >= 25: score += 3
+        elif resp_rate >= 21: score += 2
+        elif resp_rate <= 11: score += 1
+    if o2_sat > 0:
+        if o2_sat <= 91: score += 3
+        elif o2_sat <= 93: score += 2
+        elif o2_sat <= 95: score += 1
+    if sys_bp > 0:
+        if sys_bp <= 90 or sys_bp >= 220: score += 3
+        elif sys_bp <= 100: score += 2
+        elif sys_bp <= 110: score += 1
+    if hr > 0:
+        if hr <= 40 or hr >= 131: score += 3
+        elif hr >= 111: score += 2
+        elif hr <= 50 or hr >= 91: score += 1
+    if altered_mental: score += 3
+    if temp_c > 0:
+        if temp_c <= 35.0: score += 3
+        elif temp_c >= 39.1: score += 2
+        elif temp_c <= 36.0 or temp_c >= 38.1: score += 1
+    return score
 def calculate_has_bled(sys_bp, renal_disease, liver_disease, gi_bleed_hx, inr, age, meds_nsaid, meds_anticoag):
     """
     Calculates HAS-BLED score for bleeding risk stratification.
