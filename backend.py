@@ -65,50 +65,63 @@ def load_bleeding_model():
     else:
         return DummyModel()
 
-# ==========================================
-# 3. CLINICAL CALCULATORS (LOGIC)
-# ==========================================
-def calculate_aki_risk(age, diuretic, acei, sys_bp, chemo, creat, nsaid, heart_failure):
+def calculate_news2(resp_rate, o2_sat, sys_bp, hr, temp_c, altered_mental):
+    """
+    Calculates NEWS-2 Score (National Early Warning Score).
+    Standard tool for detecting clinical deterioration.
+    """
     score = 0
-    score += 30 if diuretic else 0
-    score += 40 if acei else 0
-    score += 25 if nsaid else 0
-    score += 15 if heart_failure else 0
-    score += 20 if chemo else 0
-    if age > 0: score += 20 if age > 75 else 0
-    if sys_bp > 0:
-        score += 10 if sys_bp > 160 else 0
-        score += 20 if sys_bp < 90 else 0
-    if creat > 0:
-        if creat > 1.5: score += 30
-        elif creat > 1.2: score += 15
-    return min(score, 100)
-
-def calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, temp_c):
-    qsofa = 0
-    if sys_bp > 0 and sys_bp <= 100: qsofa += 1
-    if resp_rate > 0 and resp_rate >= 22: qsofa += 1
-    if altered_mental: qsofa += 1
-    if temp_c > 0 and (temp_c > 38.0 or temp_c < 36.0): qsofa += 0.5
     
-    if qsofa >= 2: return 90
-    if qsofa >= 1: return 45
-    return 0
+    # 1. Respiratory Rate
+    if resp_rate <= 8 or resp_rate >= 25: score += 3
+    elif resp_rate >= 21: score += 2
+    elif resp_rate <= 11: score += 1
+    
+    # 2. Oxygen Saturation (Scale 1)
+    if o2_sat <= 91: score += 3
+    elif o2_sat <= 93: score += 2
+    elif o2_sat <= 95: score += 1
+    
+    # 3. Systolic BP
+    if sys_bp <= 90 or sys_bp >= 220: score += 3
+    elif sys_bp <= 100: score += 2
+    elif sys_bp <= 110: score += 1
+    
+    # 4. Heart Rate
+    if hr <= 40 or hr >= 131: score += 3
+    elif hr >= 111: score += 2
+    elif hr <= 50 or hr >= 91: score += 1
+    
+    # 5. Consciousness (Alert vs Confusion)
+    if altered_mental: score += 3
+    
+    # 6. Temperature
+    if temp_c <= 35.0: score += 3
+    elif temp_c >= 39.1: score += 2
+    elif temp_c <= 36.0 or temp_c >= 38.1: score += 1
+    
+    return score
 
-def calculate_hypoglycemic_risk(insulin, renal, hba1c_high, recent_dka):
+def calculate_has_bled(sys_bp, renal_disease, liver_disease, gi_bleed_hx, inr, age, meds_nsaid, meds_anticoag):
+    """
+    Calculates HAS-BLED score for bleeding risk stratification.
+    """
     score = 0
-    score += 30 if insulin else 0
-    score += 45 if renal else 0
-    score += 20 if hba1c_high else 0
-    score += 20 if recent_dka else 0 
-    return min(score, 100)
-
-def calculate_sirs_score(temp_c, hr, resp_rate, wbc):
-    score = 0
-    if temp_c > 0 and (temp_c > 38 or temp_c < 36): score += 1
-    if hr > 90: score += 1
-    if resp_rate > 20: score += 1
-    if wbc > 0 and (wbc > 12 or wbc < 4): score += 1
+    # H: Hypertension (SBP > 160)
+    if sys_bp > 160: score += 1
+    # A: Abnormal Renal/Liver Function (1 point each)
+    if renal_disease: score += 1
+    if liver_disease: score += 1
+    # S: Stroke History (Not captured in form, assume 0 for now)
+    # B: Bleeding History or Predisposition
+    if gi_bleed_hx: score += 1
+    # L: Labile INR (INR > 1.0 implies instability or use)
+    if inr > 1.2: score += 1
+    # E: Elderly (>65)
+    if age > 65: score += 1
+    # D: Drugs/Alcohol (1 point for meds)
+    if meds_nsaid or meds_anticoag: score += 1
+    
     return score
 
 # ==========================================
