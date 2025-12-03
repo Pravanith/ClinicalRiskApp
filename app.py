@@ -4,6 +4,7 @@ import numpy as np
 import altair as alt
 import backend as bk
 import random
+import datetime
 
 # ---------------------------------------------------------
 # 1. PAGE CONFIGURATION (MUST BE FIRST!)
@@ -31,6 +32,10 @@ def load_css():
         }
         </style>
     """, unsafe_allow_html=True)
+
+# Helper for file timestamps
+def get_timestamp():
+    return datetime.datetime.now().strftime("%Y%m%d_%H%M")
 
 # Initialize Database
 bk.init_db()
@@ -650,11 +655,12 @@ def render_dashboard():
                 ai_summary = bk.generate_discharge_summary(data)
                 st.session_state['latest_discharge_note'] = ai_summary
         
+        # --- RECOMMENDATION IMPLEMENTED: Timestamped Download ---
         if 'latest_discharge_note' in st.session_state:
             st.download_button(
                 label="📥 Download Note",
                 data=st.session_state['latest_discharge_note'],
-                file_name=f"discharge_{data.get('id')}.txt",
+                file_name=f"discharge_{data.get('id')}_{get_timestamp()}.txt",
                 mime="text/plain"
             )
             
@@ -668,6 +674,10 @@ def render_dashboard():
     # --- REAL-TIME VITALS PANEL (Uses Real Inputs) ---
     with st.container(border=True):
         st.markdown("#### 📉 Real-Time Telemetry")
+        
+        # --- RECOMMENDATION IMPLEMENTED: Disclaimer Tooltip ---
+        st.caption("ℹ️ Note: Telemetry trace below is simulated based on static input data for UI demonstration.")
+        
         col_chart, col_vitals = st.columns([3, 1])
         
         with col_chart:
@@ -858,9 +868,14 @@ def render_batch_analysis():
                         use_container_width=True
                     )
                     
-                    # Add download for the enhanced data
+                    # --- RECOMMENDATION IMPLEMENTED: Timestamped Download ---
                     csv_result = df.to_csv(index=False).encode('utf-8')
-                    st.download_button("📥 Download Analyzed Data", csv_result, "analyzed_patients.csv", "text/csv")
+                    st.download_button(
+                        "📥 Download Analyzed Data", 
+                        csv_result, 
+                        f"analyzed_patients_{get_timestamp()}.csv", 
+                        "text/csv"
+                    )
                 
         except Exception as e:
             st.error(f"Error processing CSV: {e}")
