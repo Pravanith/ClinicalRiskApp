@@ -497,8 +497,38 @@ def render_risk_calculator():
              st.info("👉 **Action:** Sign of Low Cardiac Output (Tamponade/Heart Failure) or Hypovolemia.")
              violations += 1
         
+        # --- G. DATA INTEGRITY CHECK (Demographics + Vitals) ---
+        
+        # 1. Check Demographics (Age, Weight, Height)
+        # Note: We check 'bmi' > 0 because BMI is calculated from Height & Weight.
+        has_demographics = (
+            res.get('age', 0) > 0 or 
+            res.get('weight', 0) > 0 or 
+            res.get('bmi', 0) > 0 
+        )
+
+        # 2. Check Clinical Vitals (The "Life Signs")
+        has_vitals = (
+            res.get('sys_bp', 0) > 0 or 
+            res.get('hr', 0) > 0 or 
+            res.get('o2_sat', 0) > 0 or
+            res.get('glucose', 0) > 0 or
+            res.get('temp_c', 0) > 0
+        )
+
+        # 3. Final Safety Logic
         if violations == 0:
-            st.success("✅ Patient Stable. Continue routine monitoring.")
+            if not has_demographics and not has_vitals:
+                # Scenario: User clicked button with empty form
+                st.warning("⚠️ **No Data Entered:** Please input patient data to run analysis.")
+                
+            elif has_demographics and not has_vitals:
+                # Scenario: User entered "Age 25" but no BP/HR
+                st.warning("⚠️ **Missing Vitals:** Demographics recorded, but Vital Signs (BP, HR, SpO2) are required to determine stability.")
+                
+            else:
+                # Scenario: Vitals are present and safe
+                st.success("✅ **Patient Stable:** No immediate life-threatening protocol violations detected.")
         st.divider()
         c_ai, c_txt = st.columns([1, 3])
         with c_ai:
