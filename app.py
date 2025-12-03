@@ -319,14 +319,26 @@ def render_risk_calculator():
              violations += 1
              
         # --- D. CRITICAL LABS (High & Low) ---
-        # 6. Glucose
+        # --- Glucose (Full Spectrum Match) ---
+        # Coverage: Matches Dashboard Card thresholds (>180 is Hyper, <70 is Hypo)
+        
+        # 1. Severe Hyperglycemia (DKA/HHS Risk)
         if res.get('glucose', 0) > 400:
             st.error(f"🚨 SEVERE HYPERGLYCEMIA ({res['glucose']} mg/dL)")
-            st.info("👉 **Protocol:** Check Ketones (DKA). Start IV Fluids (NS). Insulin drip protocol.")
+            st.info("👉 **Protocol:** IV Fluids + Insulin Drip. Check Ketones (DKA) and Osmolality (HHS).")
             violations += 1
+            
+        # 2. Moderate Hyperglycemia (The "Hyper" Dashboard Status)
+        # This fixes the missing link for values like 200 mg/dL
+        elif res.get('glucose', 0) > 180:
+            st.warning(f"⚠️ HYPERGLYCEMIA ({res['glucose']} mg/dL)")
+            st.caption("👉 **Action:** Sliding Scale Insulin coverage. Check HgbA1c. Monitor for infection (stress hyperglycemia).")
+            violations += 1
+            
+        # 3. Hypoglycemia (The "Hypo" Dashboard Status)
         elif res.get('glucose', 0) > 0 and res.get('glucose', 0) < 70:
             st.error(f"🚨 HYPOGLYCEMIA ({res['glucose']} mg/dL)")
-            st.info("👉 **Protocol:** Ampule of D50 IV push immediately. If no IV, Glucagon 1mg IM.")
+            st.info("👉 **Protocol:** D50 IV Push or Glucagon IM immediately. Recheck glucose in 15 mins.")
             violations += 1
 
         # 7. Electrolytes (Potassium)
@@ -425,6 +437,64 @@ def render_risk_calculator():
         if res.get('shock_index', 0) > 0.9:
              st.warning(f"⚠️ ELEVATED SHOCK INDEX ({res['shock_index']:.2f})")
              st.caption("👉 **Warning:** Early sign of Hemorrhage or Sepsis *before* hypotension occurs. Watch closely.")
+             violations += 1
+            # --- F. PREDICTIVE MODELS, SCORES & DERIVED METRICS (Complete Coverage) ---
+        
+        # 14. Acute Kidney Injury (AKI) Risk Model
+        # Coverage: Matches 'AKI Risk' card in dashboard
+        if res.get('aki_risk', 0) >= 50:
+             st.error(f"🚨 HIGH AKI RISK ({res['aki_risk']}%)")
+             st.info("👉 **Nephrology Protocol:** 1. STOP Nephrotoxins (NSAIDs, ACEi/ARB). 2. Monitor Urine Output. 3. Avoid Contrast.")
+             violations += 1
+        elif res.get('aki_risk', 0) >= 20:
+             st.warning(f"⚠️ Elevated AKI Risk ({res['aki_risk']}%)")
+             st.caption("👉 **Action:** Hydrate patient. Re-check Creatinine in 12 hours.")
+             violations += 1
+
+        # 15. Bleeding Risk Model (XGBoost)
+        # Coverage: Matches 'Bleeding Risk' card in dashboard
+        if res.get('bleeding_risk', 0) >= 50:
+             st.error(f"🚨 CRITICAL BLEEDING RISK ({res['bleeding_risk']:.1f}%)")
+             st.info("👉 **Hemorrhage Protocol:** 1. Hold Anticoagulants. 2. Type & Screen. 3. Monitor for GI Bleed.")
+             violations += 1
+        elif res.get('bleeding_risk', 0) >= 20:
+             st.warning(f"⚠️ Moderate Bleeding Risk ({res['bleeding_risk']:.1f}%)")
+             st.caption("👉 **Suggestion:** Re-evaluate anticoagulation benefit vs risk.")
+             violations += 1
+
+        # 16. Sepsis Prediction (qSOFA)
+        # Coverage: Matches 'Sepsis Score' card in dashboard
+        if res.get('sepsis_risk', 0) >= 45: # 45=1 point, 90=2+ points
+             st.error(f"🚨 SEPSIS ALERT (High Probability)")
+             st.info("👉 **Sepsis Bundle:** Lactate -> Blood Cx -> Antibiotics -> Fluids. Time is critical.")
+             violations += 1
+
+        # 17. Hypoglycemic Risk (Predictive)
+        # Coverage: Matches 'Hypo Risk' card
+        if res.get('hypo_risk', 0) >= 50:
+             st.warning(f"⚠️ HIGH HYPOGLYCEMIA RISK ({res['hypo_risk']}%)")
+             st.caption("👉 **Action:** Patient Factors (Insulin + Renal) suggest drop is imminent. Check sugar q4h.")
+             violations += 1
+
+        # 18. SIRS Score (Inflammatory Response) - NEW!
+        # Coverage: Matches 'SIRS Score' card in dashboard
+        # Score >= 2 meets definition of SIRS
+        if res.get('sirs_score', 0) >= 2:
+             st.warning(f"⚠️ SIRS CRITERIA MET (Score {res['sirs_score']}/4)")
+             st.caption("👉 **Clinical Context:** Systemic Inflammation detected. Screen for Infection (Sepsis), Trauma, or Pancreatitis.")
+             violations += 1
+
+        # 19. Pulse Pressure (Hemodynamics) - NEW!
+        # Coverage: Matches 'Pulse Pressure' card in dashboard
+        # PP = SBP - DBP. Narrow (<25) = Poor Pump. Wide (>60) = Stiffness/Valve Issue.
+        pp = res.get('pulse_pressure', 40)
+        if pp > 60:
+             st.warning(f"⚠️ WIDENED PULSE PRESSURE ({int(pp)} mmHg)")
+             st.caption("👉 **Differential:** Aortic Regurgitation, Thyrotoxicosis, or ICP (Cushing's Triad).")
+             violations += 1
+        elif pp < 25 and pp > 0:
+             st.error(f"🚨 NARROW PULSE PRESSURE ({int(pp)} mmHg)")
+             st.info("👉 **Action:** Sign of Low Cardiac Output (Tamponade/Heart Failure) or Hypovolemia.")
              violations += 1
         
         if violations == 0:
