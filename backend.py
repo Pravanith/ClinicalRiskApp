@@ -4,13 +4,26 @@ import numpy as np
 import xgboost as xgb
 import os
 import re
-from drug_data import INTERACTION_DB  # Importing from our new file
+import datetime
+
+# --- RECOMMENDATION IMPLEMENTED: Robust Import ---
+# Prevents app crash if drug_data.py is missing
+try:
+    from drug_data import INTERACTION_DB
+except ImportError:
+    print("⚠️ Warning: drug_data.py not found. Interaction checker will use empty DB.")
+    INTERACTION_DB = {}
 
 # ==========================================
 # 1. DATABASE MANAGEMENT
 # ==========================================
+def get_db_connection():
+    # --- RECOMMENDATION IMPLEMENTED: Thread Safety ---
+    # check_same_thread=False is crucial for Streamlit's multi-threaded environment
+    return sqlite3.connect('clinical_data.db', check_same_thread=False)
+
 def init_db():
-    conn = sqlite3.connect('clinical_data.db')
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS patient_history (
@@ -27,8 +40,7 @@ def init_db():
     conn.close()
 
 def save_patient_to_db(age, gender, sbp, aki, bleed, status):
-    # Using 'with' statement for safer DB handling
-    with sqlite3.connect('clinical_data.db') as conn:
+    with get_db_connection() as conn:
         c = conn.cursor()
         c.execute('''
             INSERT INTO patient_history (age, gender, sbp, aki_risk_score, bleeding_risk_score, status)
@@ -39,12 +51,12 @@ def save_patient_to_db(age, gender, sbp, aki, bleed, status):
 def fetch_history():
     if not os.path.exists('clinical_data.db'):
         return pd.DataFrame()
-    with sqlite3.connect('clinical_data.db') as conn:
+    with get_db_connection() as conn:
         df = pd.read_sql("SELECT * FROM patient_history ORDER BY timestamp DESC", conn)
     return df
 
 def clear_history():
-    with sqlite3.connect('clinical_data.db') as conn:
+    with get_db_connection() as conn:
         conn.execute("DELETE FROM patient_history")
         conn.commit()
 
@@ -69,9 +81,13 @@ class HeuristicFallbackModel:
 def load_bleeding_model():
     model_file = "bleeding_risk_model.json"
     if os.path.exists(model_file):
-        model = xgb.XGBRegressor()
-        model.load_model(model_file)
-        return model
+        try:
+            model = xgb.XGBRegressor()
+            model.load_model(model_file)
+            return model
+        except Exception as e:
+            print(f"⚠️ Error loading XGBoost model: {e}. Using Fallback.")
+            return HeuristicFallbackModel()
     else:
         print("⚠️ Warning: ML Model file not found. Using Heuristic Fallback.")
         return HeuristicFallbackModel()
@@ -125,11 +141,18 @@ def calculate_sirs_score(temp_c, hr, resp_rate, wbc):
 # ==========================================
 # 4. INTERACTION CHECKER
 # ==========================================
+def normalize_text(text):
+    """Simple normalization to handle slight variations in drug names"""
+    if not isinstance(text, str): return ""
+    return text.lower().strip()
+
 def check_interaction(d1, d2):
-    # Using the external dictionary from drug_data.py
-    d1, d2 = d1.lower().strip(), d2.lower().strip()
-    if (d1, d2) in INTERACTION_DB: return INTERACTION_DB[(d1, d2)]
-    if (d2, d1) in INTERACTION_DB: return INTERACTION_DB[(d2, d1)]
+    # --- RECOMMENDATION IMPLEMENTED: Better Normalization ---
+    d1_clean = normalize_text(d1)
+    d2_clean = normalize_text(d2)
+    
+    if (d1_clean, d2_clean) in INTERACTION_DB: return INTERACTION_DB[(d1_clean, d2_clean)]
+    if (d2_clean, d1_clean) in INTERACTION_DB: return INTERACTION_DB[(d2_clean, d1_clean)]
     return None
 
 # ==========================================
