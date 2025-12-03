@@ -261,71 +261,174 @@ def render_risk_calculator():
 
         st.divider()
         
-        # --- CLINICAL ALERTS (UPDATED) ---
-        st.markdown("### ⚠️ Clinical Alerts & AI Assessment")
+   # --- CLINICAL ALERTS & PROTOCOL SUGGESTIONS (HIGHS & LOWS) ---
+        st.markdown("### ⚠️ Clinical Alerts & AI Recommendations")
         violations = 0 
         
-        # 1. Airway/Breathing
+        # --- A. AIRWAY & BREATHING ---
+        # 1. SpO2 (Hypoxia)
         if res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 88: 
-            st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%) - Secure Airway Immediately!")
+            st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%)")
+            st.info("👉 **Protocol:** 15L O2 via Non-Rebreather. Prepare for RSI/Intubation. Check ABG.")
             violations += 1
         elif res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 92:
-            st.warning(f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%) - Oxygen Therapy Indicated")
+            st.warning(f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%)")
+            st.caption("👉 Suggestion: Titrate O2 to keep sats > 94%. Consider Nasal Cannula 2-4L.")
             violations += 1
         
+        # 2. Respiratory Rate (High & Low)
         if res.get('resp_rate', 0) > 30:
             st.error(f"🚨 SEVERE TACHYPNEA (RR {res['resp_rate']})")
+            st.info("👉 **Action:** Assess for Respiratory Distress/Acidosis. Order CXR + ABG. Rule out PE.")
+            violations += 1
+        elif res.get('resp_rate', 0) < 8 and res.get('resp_rate', 0) > 0:
+            st.error(f"🚨 RESPIRATORY DEPRESSION (RR {res['resp_rate']})")
+            st.info("👉 **Action:** Sternum rub. Check for Opioid overdose (Give Naloxone 0.4mg). Bag-Valve-Mask ventilation.")
             violations += 1
 
-        # 2. Circulation (Includes Diastolic Check!)
+        # --- B. CIRCULATION ---
+        # 3. Blood Pressure (High & Low)
         if res.get('sys_bp', 0) > 180 or res.get('dia_bp', 0) > 120: 
             st.error(f"🚨 HYPERTENSIVE CRISIS (BP {res['sys_bp']}/{res['dia_bp']})")
+            st.info("👉 **Protocol:** IV Labetalol 10-20mg or Nicardipine drip. CT Head to rule out bleed.")
             violations += 1
         elif res.get('sys_bp', 0) > 0 and res.get('sys_bp', 0) < 90: 
             st.error(f"🚨 SHOCK / HYPOTENSION (BP {res['sys_bp']}/{res['dia_bp']})")
-            violations += 1
-        elif res.get('dia_bp', 0) > 0 and res.get('dia_bp', 0) < 40:
-            st.error(f"🚨 CRITICAL DIASTOLIC HYPOTENSION (Dia {res['dia_bp']})")
+            st.info("👉 **Protocol:** Trendelenburg position. 500mL Fluid Bolus. Start Norepinephrine if MAP < 65.")
             violations += 1
             
+        # 4. Heart Rate (High & Low)
         if res.get('hr', 0) > 130:
             st.error(f"🚨 SEVERE TACHYCARDIA (HR {res['hr']})")
+            st.info("👉 **Action:** 12-Lead EKG STAT. Treat Pain/Fever/Sepsis. Vagal maneuvers if stable SVT.")
             violations += 1
         elif res.get('hr', 0) > 0 and res.get('hr', 0) < 40:
             st.error(f"🚨 SEVERE BRADYCARDIA (HR {res['hr']})")
+            st.info("👉 **Action:** Transcutaneous Pacing pads applied. Atropine 0.5-1mg IV. Check Electrolytes.")
             violations += 1
 
-        # 3. Labs
-        if res.get('creat', 0) > 3.0: 
-            st.error(f"🚨 ACUTE RENAL FAILURE (Cr {res['creat']})")
-            violations += 1
-        
-        if res.get('potassium', 0) > 6.0:
-            st.error(f"🚨 CRITICAL HYPERKALEMIA (K+ {res['potassium']})")
-            violations += 1
-            
-        if res.get('inr', 0) > 4.0:
-            st.error(f"🚨 CRITICAL INR ({res['inr']}) - Bleed Risk")
-            violations += 1
-        
-        # Glucose Logic (Hypo AND Hyper)
+        # --- C. DISABILITY / EXPOSURE ---
+        # 5. Temperature (High & Low)
+        if res.get('temp_c', 0) > 39.0:
+             st.error(f"🚨 HIGH FEVER ({res['temp_c']}°C)")
+             st.info("👉 **Action:** Blood Cultures x2. Start Antipyretics (Tylenol). Surface cooling measures.")
+             violations += 1
+        elif res.get('temp_c', 0) < 35.0 and res.get('temp_c', 0) > 0:
+             st.error(f"🚨 HYPOTHERMIA ({res['temp_c']}°C)")
+             st.info("👉 **Protocol:** Bear Hugger (Warm air blanket). Warm IV fluids. Monitor cardiac rhythm.")
+             violations += 1
+             
+        # --- D. CRITICAL LABS (High & Low) ---
+        # 6. Glucose
         if res.get('glucose', 0) > 400:
-            st.error(f"🚨 SEVERE HYPERGLYCEMIA ({res['glucose']} mg/dL) - Check Ketones/DKA")
-            violations += 1
-        elif res.get('glucose', 0) > 180:
-            st.warning(f"⚠️ Hyperglycemia ({res['glucose']} mg/dL) - Monitor")
+            st.error(f"🚨 SEVERE HYPERGLYCEMIA ({res['glucose']} mg/dL)")
+            st.info("👉 **Protocol:** Check Ketones (DKA). Start IV Fluids (NS). Insulin drip protocol.")
             violations += 1
         elif res.get('glucose', 0) > 0 and res.get('glucose', 0) < 70:
-            st.error(f"🚨 HYPOGLYCEMIA ({res['glucose']} mg/dL) - Give Dextrose")
+            st.error(f"🚨 HYPOGLYCEMIA ({res['glucose']} mg/dL)")
+            st.info("👉 **Protocol:** Ampule of D50 IV push immediately. If no IV, Glucagon 1mg IM.")
             violations += 1
 
-        if res.get('sepsis_risk', 0) >= 2:
-             st.error("🚨 SEPSIS ALERT: qSOFA Score ≥ 2")
+        # 7. Electrolytes (Potassium)
+        if res.get('potassium', 0) > 6.0:
+            st.error(f"🚨 CRITICAL HYPERKALEMIA (K+ {res['potassium']})")
+            st.info("👉 **Protocol:** Calcium Gluconate (Heart protect) + Insulin/D50 (Shift K+) + Albuterol.")
+            violations += 1
+        elif res.get('potassium', 0) > 0 and res.get('potassium', 0) < 2.5:
+            st.error(f"🚨 CRITICAL HYPOKALEMIA (K+ {res['potassium']})")
+            st.info("👉 **Protocol:** Urgent IV Potassium replacement (max 10mEq/hr). Continuous EKG monitoring.")
+            violations += 1
+            
+        # 8. Hematology (COMPLETE: Highs & Lows)
+        # --- Hemoglobin (Hgb) ---
+        if res.get('hgb', 0) > 0 and res.get('hgb', 0) < 7.0:
+             st.error(f"🚨 CRITICAL ANEMIA (Hgb {res['hgb']} g/dL)")
+             st.info("👉 **Action:** Type & Crossmatch. Transfuse 1 Unit PRBCs. Check for GI Bleed.")
+             violations += 1
+        elif res.get('hgb', 0) > 18.0:
+             st.warning(f"⚠️ POLYCYTHEMIA (Hgb {res['hgb']} g/dL)")
+             st.caption("👉 **Risk:** High stroke/clotting risk. Consider hydration or therapeutic phlebotomy.")
              violations += 1
 
-        if violations == 0:
-            st.success("✅ No immediate Life-Threatening Protocol violations detected.")
+        # --- White Blood Cells (WBC) ---
+        if res.get('wbc', 0) > 0 and res.get('wbc', 0) < 1.0:
+             st.error(f"🚨 SEVERE NEUTROPENIA (WBC {res['wbc']})")
+             st.info("👉 **Protocol:** Neutropenic Precautions (Mask/Isolation). Start Broad-Spectrum Abx (Cefepime/Meropenem).")
+             violations += 1
+        elif res.get('wbc', 0) > 20.0:
+             st.error(f"🚨 LEUKOCYTOSIS / INFECTION (WBC {res['wbc']})")
+             st.info("👉 **Action:** Sepsis Workup (Lactate, Cultures). Rule out Leukemia or Steroid effect.")
+             violations += 1
 
+        # --- Platelets (Plt) ---
+        if res.get('platelets', 0) > 0 and res.get('platelets', 0) < 20:
+             st.error(f"🚨 CRITICAL THROMBOCYTOPENIA (Plt {res['platelets']})")
+             st.info("👉 **Action:** Bleeding Precautions (No needles/falls). Transfuse Platelets if active bleeding.")
+             violations += 1
+        elif res.get('platelets', 0) > 1000:
+             st.warning(f"⚠️ THROMBOCYTOSIS (Plt {res['platelets']})")
+             st.caption("👉 **Risk:** Microvascular clotting. Administer Aspirin if not contraindicated.")
+             violations += 1
+            # --- E. METABOLIC, RENAL & ACID-BASE (The Acidosis Checks) ---
+        
+        # 9. Lactic Acidosis (Metabolic)
+        if res.get('lactate', 0) > 4.0:
+             st.error(f"🚨 SEVERE LACTIC ACIDOSIS ({res['lactate']} mmol/L)")
+             st.info("👉 **Protocol:** Assess for Sepsis or Ischemia. Start 30mL/kg Fluid Resuscitation. Check pH.")
+             violations += 1
+        elif res.get('lactate', 0) >= 2.0:
+             st.warning(f"⚠️ Elevated Lactate ({res['lactate']} mmol/L)")
+             st.caption("👉 **Warning:** Early sign of tissue hypoperfusion or sepsis. Repeat level in 2 hours.")
+             violations += 1
+
+        # 10. Diabetic Ketoacidosis (DKA) Risk
+        if res.get('glucose', 0) > 250 and res.get('hba1c_high', False):
+             st.warning(f"⚠️ DKA RISK / METABOLIC ACIDOSIS (Glu {res['glucose']})")
+             st.caption("👉 **Action:** Check Urine Ketones and Anion Gap. If positive, start DKA protocol.")
+             violations += 1
+
+        # 11. Respiratory Acidosis Risk (Hypoventilation)
+        # Note: We already check Low RR in Section A, but we reinforce the Acidosis link here if severe.
+        if res.get('resp_rate', 0) > 0 and res.get('resp_rate', 0) < 8:
+             st.error("🚨 RESPIRATORY ACIDOSIS RISK (CO2 Retention)")
+             st.info("👉 **Pathophysiology:** Patient is not breathing enough to blow off CO2. pH is likely dropping.")
+             # We don't add to violations here to avoid double-counting the Low RR alert from Section A.
+
+        # 12. BUN (Uremia)
+        if res.get('bun', 0) > 40:
+             st.warning(f"⚠️ UREMIA / HIGH BUN ({res['bun']} mg/dL)")
+             st.caption("👉 **Action:** Check for GI Bleed (digested blood increases BUN) or Dehydration.")
+             violations += 1
+
+        # 13. MAP (Perfusion Pressure)
+        if res.get('map_val', 0) > 0 and res.get('map_val', 0) < 65:
+             st.error(f"🚨 CRITICAL LOW MAP ({int(res.get('map_val', 0))} mmHg)")
+             st.info("👉 **Protocol:** Titrate Vasopressors (Levophed) to keep MAP > 65 to prevent organ failure.")
+             violations += 1
+            
+        # --- E. PERFUSION & KIDNEY METABOLICS (The Missing Pieces) ---
+        # 9. BUN (Uremia / Dehydration)
+        if res.get('bun', 0) > 40:
+             st.warning(f"⚠️ HIGH BUN ({res['bun']} mg/dL)")
+             st.caption("👉 **Possible Causes:** Dehydration, GI Bleed (digested blood), or Renal Failure. Check BUN/Cr Ratio.")
+             violations += 1
+        
+        # 10. MAP (Mean Arterial Pressure) - The True Measure of Perfusion
+        # MAP = (SBP + 2*DBP) / 3. Critical threshold is 65 mmHg.
+        if res.get('map_val', 0) > 0 and res.get('map_val', 0) < 65:
+             st.error(f"🚨 CRITICAL LOW MAP ({int(res['map_val'])} mmHg)")
+             st.info("👉 **Protocol:** Titrate Vasopressors (Levophed) to maintain MAP > 65 mmHg to protect kidneys/brain.")
+             violations += 1
+             
+        # 11. Shock Index (Heart Rate / SBP)
+        # Normal is 0.5-0.7. > 0.9 indicates hidden bleeding/sepsis even if BP is normal.
+        if res.get('shock_index', 0) > 0.9:
+             st.warning(f"⚠️ ELEVATED SHOCK INDEX ({res['shock_index']:.2f})")
+             st.caption("👉 **Warning:** Early sign of Hemorrhage or Sepsis *before* hypotension occurs. Watch closely.")
+             violations += 1
+        
+        if violations == 0:
+            st.success("✅ Patient Stable. Continue routine monitoring.")
         st.divider()
         c_ai, c_txt = st.columns([1, 3])
         with c_ai:
