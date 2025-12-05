@@ -7,7 +7,7 @@ import random
 import datetime
 
 # ---------------------------------------------------------
-# 1. PAGE CONFIGURATION (MUST BE FIRST!)
+# 1. PAGE CONFIGURATION
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Clinical Risk Monitor", 
@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# 2. CSS & SETUP (Everything else comes AFTER)
+# 2. CSS & SETUP 
 # ---------------------------------------------------------
 def load_css():
     st.markdown("""
@@ -71,7 +71,7 @@ def render_cover_page():
         st.session_state['entered_app'] = True
         st.rerun()
 
-# --- MODULE 1: RISK CALCULATOR (ULTIMATE EDITION) ---
+# --- MODULE 1: RISK CALCULATOR ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator")
     
@@ -94,8 +94,6 @@ def render_risk_calculator():
                 w_val, w_unit = st.columns([2, 1]) 
                 weight_input = w_val.number_input("Weight", 0.0, 400.0, 0.0)
                 weight_scale = w_unit.selectbox("Unit", ["kg", "lbs"], key="w_unit")
-                
-                # Add Height
                 height = st.number_input("Height (cm)", 0, 250, 0)
                 
                 # Weight Logic
@@ -257,7 +255,7 @@ def render_risk_calculator():
         else:
              r4.metric("🍬 Hypo Risk", f"{res.get('hypo_risk', 0)}%", "Normal")
 
-        # ROW 2: Advanced Hemodynamics (New!)
+        # ROW 2: Advanced Hemodynamics
         h1, h2, h3, h4 = st.columns(4)
         h1.metric("MAP", f"{int(res.get('map_val', 0))} mmHg", help="Mean Arterial Pressure")
         h2.metric("⚡ SIRS Score", f"{res.get('sirs_score', 0)}/4", help="Inflammatory Response")
@@ -334,7 +332,6 @@ def render_risk_calculator():
             violations += 1
             
         # 2. Moderate Hyperglycemia (The "Hyper" Dashboard Status)
-        # This fixes the missing link for values like 200 mg/dL
         elif res.get('glucose', 0) > 180:
             st.warning(f"⚠️ HYPERGLYCEMIA ({res['glucose']} mg/dL)")
             st.caption("👉 **Action:** Sliding Scale Insulin coverage. Check HgbA1c. Monitor for infection (stress hyperglycemia).")
@@ -386,8 +383,8 @@ def render_risk_calculator():
              st.warning(f"⚠️ THROMBOCYTOSIS (Plt {res['platelets']})")
              st.caption("👉 **Risk:** Microvascular clotting. Administer Aspirin if not contraindicated.")
              violations += 1
-            # --- E. METABOLIC, RENAL & ACID-BASE (The Acidosis Checks) ---
-        
+            
+        # --- E. METABOLIC, RENAL & ACID-BASE (The Acidosis Checks) ---
         # 9. Lactic Acidosis (Metabolic)
         if res.get('lactate', 0) > 4.0:
              st.error(f"🚨 SEVERE LACTIC ACIDOSIS ({res['lactate']} mmol/L)")
@@ -405,7 +402,6 @@ def render_risk_calculator():
              violations += 1
 
         # 11. Respiratory Acidosis Risk (Hypoventilation)
-        # Note: We already check Low RR in Section A, but we reinforce the Acidosis link here if severe.
         if res.get('resp_rate', 0) > 0 and res.get('resp_rate', 0) < 8:
              st.error("🚨 RESPIRATORY ACIDOSIS RISK (CO2 Retention)")
              st.info("👉 **Pathophysiology:** Patient is not breathing enough to blow off CO2. pH is likely dropping.")
@@ -443,10 +439,9 @@ def render_risk_calculator():
              st.warning(f"⚠️ ELEVATED SHOCK INDEX ({res['shock_index']:.2f})")
              st.caption("👉 **Warning:** Early sign of Hemorrhage or Sepsis *before* hypotension occurs. Watch closely.")
              violations += 1
-            # --- F. PREDICTIVE MODELS, SCORES & DERIVED METRICS (Complete Coverage) ---
-        
+            
+        # --- F. PREDICTIVE MODELS, SCORES & DERIVED METRICS ---
         # 14. Acute Kidney Injury (AKI) Risk Model
-        # Coverage: Matches 'AKI Risk' card in dashboard
         if res.get('aki_risk', 0) >= 50:
              st.error(f"🚨 HIGH AKI RISK ({res['aki_risk']}%)")
              st.info("👉 **Nephrology Protocol:** 1. STOP Nephrotoxins (NSAIDs, ACEi/ARB). 2. Monitor Urine Output. 3. Avoid Contrast.")
@@ -457,7 +452,6 @@ def render_risk_calculator():
              violations += 1
 
         # 15. Bleeding Risk Model (XGBoost)
-        # Coverage: Matches 'Bleeding Risk' card in dashboard
         if res.get('bleeding_risk', 0) >= 50:
              st.error(f"🚨 CRITICAL BLEEDING RISK ({res['bleeding_risk']:.1f}%)")
              st.info("👉 **Hemorrhage Protocol:** 1. Hold Anticoagulants. 2. Type & Screen. 3. Monitor for GI Bleed.")
@@ -468,30 +462,24 @@ def render_risk_calculator():
              violations += 1
 
         # 16. Sepsis Prediction (qSOFA)
-        # Coverage: Matches 'Sepsis Score' card in dashboard
         if res.get('sepsis_risk', 0) >= 45: # 45=1 point, 90=2+ points
              st.error(f"🚨 SEPSIS ALERT (High Probability)")
              st.info("👉 **Sepsis Bundle:** Lactate -> Blood Cx -> Antibiotics -> Fluids. Time is critical.")
              violations += 1
 
         # 17. Hypoglycemic Risk (Predictive)
-        # Coverage: Matches 'Hypo Risk' card
         if res.get('hypo_risk', 0) >= 50:
              st.warning(f"⚠️ HIGH HYPOGLYCEMIA RISK ({res['hypo_risk']}%)")
              st.caption("👉 **Action:** Patient Factors (Insulin + Renal) suggest drop is imminent. Check sugar q4h.")
              violations += 1
 
-        # 18. SIRS Score (Inflammatory Response) - NEW!
-        # Coverage: Matches 'SIRS Score' card in dashboard
-        # Score >= 2 meets definition of SIRS
+        # 18. SIRS Score (Inflammatory Response) 
         if res.get('sirs_score', 0) >= 2:
              st.warning(f"⚠️ SIRS CRITERIA MET (Score {res['sirs_score']}/4)")
              st.caption("👉 **Clinical Context:** Systemic Inflammation detected. Screen for Infection (Sepsis), Trauma, or Pancreatitis.")
              violations += 1
 
-        # 19. Pulse Pressure (Hemodynamics) - NEW!
-        # Coverage: Matches 'Pulse Pressure' card in dashboard
-        # PP = SBP - DBP. Narrow (<25) = Poor Pump. Wide (>60) = Stiffness/Valve Issue.
+        # 19. Pulse Pressure (Hemodynamics) 
         pp = res.get('pulse_pressure', 40)
         if pp > 60:
              st.warning(f"⚠️ WIDENED PULSE PRESSURE ({int(pp)} mmHg)")
@@ -505,7 +493,6 @@ def render_risk_calculator():
         # --- G. DATA INTEGRITY CHECK (Demographics + Vitals) ---
         
         # 1. Check Demographics (Age, Weight, Height)
-        # Note: We check 'bmi' > 0 because BMI is calculated from Height & Weight.
         has_demographics = (
             res.get('age', 0) > 0 or 
             res.get('weight', 0) > 0 or 
@@ -554,7 +541,7 @@ def render_risk_calculator():
     else:
         st.info("👈 Fill out the patient data form above and click 'Run Clinical Analysis' to see results.")
         
-# --- MODULE 2: PATIENT HISTORY (PRO UI) ---
+# --- MODULE 2: PATIENT HISTORY---
 def render_history_sql():
     st.subheader("🗄️ Patient History Database")
     
@@ -574,7 +561,7 @@ def render_history_sql():
                 if val > 20: return 'background-color: #fff9c4; color: black;' # Yellow
             return ''
 
-        # 3. Configure Columns (The "Pro" Look)
+        # 3. Configure Columns
         st.dataframe(
             df,
             column_config={
@@ -605,7 +592,7 @@ def render_history_sql():
 
         st.divider()
         
-        # 4. Analytics Section (Visuals)
+        # 4. Analytics Section
         st.markdown("### 📈 Cohort Analytics")
         c1, c2 = st.columns(2)
         
@@ -632,7 +619,6 @@ def render_history_sql():
 # --- MODULE 3: LIVE DASHBOARD (LINKED TO CALCULATOR) ---
 def render_dashboard():
     # 1. GET DATA FROM SESSION STATE
-    # This grabs the exact values you just entered in the Risk Calculator
     data = st.session_state.get('patient_data', {})
     
     # Default values if no analysis has been run yet
@@ -649,13 +635,13 @@ def render_dashboard():
         st.caption(f"Status: **{data.get('status', 'Unknown')}**")
     
     with c2:
-        # AI DISCHARGE SUMMARY (Now uses the real data)
+        # AI DISCHARGE SUMMARY (using the real data from Risk Calculator)
         if st.button("✨ Generate Discharge Note", type="primary"):
             with st.spinner("Consulting Gemini 2.0..."):
                 ai_summary = bk.generate_discharge_summary(data)
                 st.session_state['latest_discharge_note'] = ai_summary
         
-        # --- RECOMMENDATION IMPLEMENTED: Timestamped Download ---
+        # --- Timestamped Download ---
         if 'latest_discharge_note' in st.session_state:
             st.download_button(
                 label="📥 Download Note",
@@ -675,7 +661,7 @@ def render_dashboard():
     with st.container(border=True):
         st.markdown("#### 📉 Real-Time Telemetry")
         
-        # --- RECOMMENDATION IMPLEMENTED: Disclaimer Tooltip ---
+        # ---Disclaimer Tooltip ---
         st.caption("ℹ️ Note: Telemetry trace below is simulated based on static input data for UI demonstration.")
         
         col_chart, col_vitals = st.columns([3, 1])
@@ -868,7 +854,7 @@ def render_batch_analysis():
                         use_container_width=True
                     )
                     
-                    # --- RECOMMENDATION IMPLEMENTED: Timestamped Download ---
+                    # ---Timestamped Download ---
                     csv_result = df.to_csv(index=False).encode('utf-8')
                     st.download_button(
                         "📥 Download Analyzed Data", 
@@ -879,7 +865,7 @@ def render_batch_analysis():
                 
         except Exception as e:
             st.error(f"Error processing CSV: {e}")
-# --- MODULE 5: MEDICATION CHECKER (SAFETY UPDATE) ---
+# --- MODULE 5: MEDICATION CHECKER ---
 def render_medication_checker():
     st.subheader("💊 Drug-Drug Interaction Checker")
     st.caption("Checks for Critical and Major interactions from backend database + AI Analysis.")
@@ -927,7 +913,7 @@ def render_chatbot():
         with st.chat_message("assistant"):
             st.write(bk.chatbot_response(q))
 
-# --- MODULE 7: AI DIAGNOSTICIAN (MODERN CHAT INTERFACE) ---
+# --- MODULE 7: AI DIAGNOSTICIAN ---
 def render_ai_diagnostician():
     st.subheader("🧠 AI-Powered Clinical Consultant")
     st.caption("Ask complex clinical questions or simulate differential diagnoses.")
