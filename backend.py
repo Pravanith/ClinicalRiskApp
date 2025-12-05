@@ -6,7 +6,6 @@ import os
 import re
 import datetime
 
-# --- RECOMMENDATION IMPLEMENTED: Robust Import ---
 # Prevents app crash if drug_data.py is missing
 try:
     from drug_data import INTERACTION_DB
@@ -18,7 +17,6 @@ except ImportError:
 # 1. DATABASE MANAGEMENT
 # ==========================================
 def get_db_connection():
-    # --- RECOMMENDATION IMPLEMENTED: Thread Safety ---
     # check_same_thread=False is crucial for Streamlit's multi-threaded environment
     return sqlite3.connect('clinical_data.db', check_same_thread=False)
 
@@ -69,8 +67,7 @@ class HeuristicFallbackModel:
     Used to ensure system reliability in production.
     """
     def predict(self, df):
-        # Deterministic logic similar to HAS-BLED score
-        risk = 10.0 # Base risk
+        risk = 10.0 
         row = df.iloc[0]
         if row.get('age', 0) > 65: risk += 15
         if row.get('high_bp', 0) == 1: risk += 20
@@ -147,7 +144,6 @@ def normalize_text(text):
     return text.lower().strip()
 
 def check_interaction(d1, d2):
-    # --- RECOMMENDATION IMPLEMENTED: Better Normalization ---
     d1_clean = normalize_text(d1)
     d2_clean = normalize_text(d2)
     
