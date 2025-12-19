@@ -1025,18 +1025,19 @@ else:
         render_chatbot()
     elif menu == "🧠 AI Clinical Consultant":
         render_ai_diagnostician()
-        # ---------------------------------------------------------
-    # DEBUG: ADMIN PANEL (Add this to the very bottom of app.py)
+      # ---------------------------------------------------------
+    # DEBUG: ADMIN PANEL (Hidden inside a dropdown)
     # ---------------------------------------------------------
     st.sidebar.divider()
-    st.sidebar.subheader("🔧 Admin Panel")
-    if st.sidebar.button("⚡ Force Retrain Model (Cloud-Side)"):
-        with st.spinner("Training new model on Cloud Server..."):
-            try:
-                import train_model
-                train_model.train()  # This runs your training script inside the cloud
-                st.success("✅ Model Retrained Successfully! Please Reboot the App.")
-                st.balloons()
-            except Exception as e:
-                st.error(f"Training Failed: {e}")
-
+    
+    # This creates a small dropdown menu. The button is hidden inside.
+    with st.sidebar.expander("🔧 Admin / Troubleshooting"):
+        st.write("Only use this if the risk score shows round numbers (e.g. 50.0%).")
+        if st.button("⚡ Force Retrain Model"):
+            with st.spinner("Training new model on Cloud Server..."):
+                try:
+                    import train_model
+                    train_model.train()
+                    st.success("✅ Model Retrained! Reboot App now.")
+                except Exception as e:
+                    st.error(f"Failed: {e}")
