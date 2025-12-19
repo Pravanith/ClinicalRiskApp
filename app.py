@@ -233,35 +233,37 @@ def render_risk_calculator():
                 temp_c = v5.number_input("Temp °C (Normal: 36.5-37.5)", 0.0, 45.0, step=0.1, key='temp_input')
                 o2_sat = v6.number_input("O2 Sat % (Normal: >95%)", 0, 100, key='o2_input')
 
-            # --- RIGHT COLUMN: Labs & History ---
+# --- RIGHT COLUMN: Labs & History (FIXED MISSING KEYS) ---
             with col_right:
                 st.markdown("##### 🧪 Critical Labs")
                 lab1, lab2 = st.columns(2)
                 creat = lab1.number_input("Creatinine (0.6-1.2 mg/dL)", 0.0, 20.0, key='creat_input')
-                bun = lab2.number_input("Blood Urea Nitrogen (7-20)", 0, 100, 0)
+                bun = lab2.number_input("Blood Urea Nitrogen (7-20)", 0, 100, 0, key='bun_input')
                 
                 lab3, lab4 = st.columns(2)
-                potassium = lab3.number_input("Potassium (3.5-5.0 mmol/L)", 0.0, 10.0, 0.0)
-                glucose = lab4.number_input("Glucose (70-100 mg/dL)", 0, 1000, 0)
+                potassium = lab3.number_input("Potassium (3.5-5.0 mmol/L)", 0.0, 10.0, 0.0, key='k_input')
+                glucose = lab4.number_input("Glucose (70-100 mg/dL)", 0, 1000, 0, key='glc_input')
                 
                 lab5, lab6 = st.columns(2)
-                wbc = lab5.number_input("WBC (4.5-11.0 10^9/L)", 0.0, 50.0, 0.0)
-                hgb = lab6.number_input("Hemoglobin (13.5-17.5 g/dL)", 0.0, 20.0, 0.0)
+                # ADDED KEYS HERE:
+                wbc = lab5.number_input("WBC (4.5-11.0 10^9/L)", 0.0, 50.0, 0.0, key='wbc_input')
+                hgb = lab6.number_input("Hemoglobin (13.5-17.5 g/dL)", 0.0, 20.0, 0.0, key='hgb_input')
                 
                 lab7, lab8 = st.columns(2)
-                platelets = lab7.number_input("Platelets (150-450 10^9/L)", 0, 1000, 0)
+                platelets = lab7.number_input("Platelets (150-450 10^9/L)", 0, 1000, 0, key='plt_input')
                 inr = lab8.number_input("INR (Clotting Time) [0.9-1.1]", 0.0, 10.0, key='inr_input')
                 
-                lactate = st.number_input("Lactate (Normal: < 2.0 mmol/L)", 0.0, 20.0, 0.0)
+                # ADDED KEY HERE:
+                lactate = st.number_input("Lactate (Normal: < 2.0 mmol/L)", 0.0, 20.0, 0.0, key='lac_input')
 
                 st.markdown("##### 📋 Medical History")
                 h1, h2 = st.columns(2)
                 anticoag = h1.checkbox("Anticoagulant Use", key='anticoag_input')
-                liver_disease = h2.checkbox("Liver Disease")
+                liver_disease = h2.checkbox("Liver Disease", key='liver_input')
                 
                 h3, h4 = st.columns(2)
-                heart_failure = h3.checkbox("Heart Failure")
-                gi_bleed = h4.checkbox("History of GI Bleed")
+                heart_failure = h3.checkbox("Heart Failure", key='chf_input')
+                gi_bleed = h4.checkbox("History of GI Bleed", key='gib_input')
                 
                 m1, m2 = st.columns(2)
                 nsaid = m1.checkbox("NSAID Use")
@@ -275,7 +277,7 @@ def render_risk_calculator():
                 insulin = m5.checkbox("Insulin")
                 hba1c_high = m6.checkbox("Uncontrolled Diabetes")
                 
-                altered_mental = st.checkbox("Altered Mental Status (Confusion)")
+                altered_mental = st.checkbox("Altered Mental Status (Confusion)", key='ams_input')
                 pain = 0
 
             st.write("") 
