@@ -394,7 +394,7 @@ def render_risk_calculator():
             'diuretic': diuretic, 'acei': acei, 'liver_disease': liver_disease, 'heart_failure': heart_failure
         }
 
-    # --- RESULTS DISPLAY ---
+    # --- RESULTS DISPLAY (COLOR CORRECTED) ---
     if 'analysis_results' in st.session_state:
         res = st.session_state['analysis_results']
         
@@ -403,28 +403,105 @@ def render_risk_calculator():
         
         # Row 1: The Major Scores
         r1, r2, r3, r4 = st.columns(4)
-        r1.metric("🩸 Bleeding Risk", f"{res['bleeding_risk']:.1f}%", 
-                 "High" if res['bleeding_risk'] > 50 else "Normal", help="XGBoost Prediction")
-        r2.metric("💧 AKI Risk", f"{res['aki_risk']}%", 
-                 "High" if res['aki_risk'] > 50 else "Normal", help="KDIGO Criteria")
-        r3.metric("🦠 Sepsis Score", f"{res['sepsis_risk']}", 
-                 "Alert" if res['sepsis_risk'] >= 2 else "Normal", help="qSOFA Score")
         
-        # Dynamic Glucose Alert
+        # 1. Bleeding Risk (Red if > 50%)
+        b_risk = res['bleeding_risk']
+        r1.metric(
+            "🩸 Bleeding Risk", 
+            f"{b_risk:.1f}%", 
+            "High" if b_risk > 50 else "Normal", 
+            delta_color="inverse" if b_risk > 50 else "normal",
+            help="XGBoost Prediction"
+        )
+        
+        # 2. AKI Risk (Red if > 50%)
+        a_risk = res['aki_risk']
+        r2.metric(
+            "💧 AKI Risk", 
+            f"{a_risk}%", 
+            "High" if a_risk > 50 else "Normal", 
+            delta_color="inverse" if a_risk > 50 else "normal",
+            help="KDIGO Criteria"
+        )
+        
+        # 3. Sepsis Score (Red if >= 2)
+        s_score = res['sepsis_risk']
+        r3.metric(
+            "🦠 Sepsis Score", 
+            f"{s_score}", 
+            "Alert" if s_score >= 2 else "Normal", 
+            delta_color="inverse" if s_score >= 2 else "normal",
+            help="qSOFA Score"
+        )
+        
+        # 4. Glycemia (Red if High or Low)
         current_gluc = res.get('glucose', 0)
+        hypo_risk = res.get('hypo_risk', 0)
+        
         if current_gluc > 180:
              r4.metric("🍬 Glycemia", f"{int(current_gluc)} mg/dL", "Hyper (High)", delta_color="inverse")
         elif current_gluc > 0 and current_gluc < 70:
              r4.metric("🍬 Glycemia", f"{int(current_gluc)} mg/dL", "Hypo (Low)", delta_color="inverse")
         else:
-             r4.metric("🍬 Hypo Risk", f"{res.get('hypo_risk', 0)}%", "Normal")
+             r4.metric(
+                 "🍬 Hypo Risk", 
+                 f"{hypo_risk}%", 
+                 "Normal",
+                 delta_color="inverse" if hypo_risk > 50 else "normal"
+             )
 
         # Row 2: Hemodynamics
         h1, h2, h3, h4 = st.columns(4)
-        h1.metric("MAP", f"{int(res.get('map_val', 0))} mmHg", help="Mean Arterial Pressure")
-        h2.metric("⚡ SIRS Score", f"{res.get('sirs_score', 0)}/4", help="Inflammatory Response")
-        h3.metric("💔 Shock Index", f"{res.get('shock_index', 0):.2f}", "Critical" if res.get('shock_index', 0) > 0.9 else "Normal", help="HR / SBP")
-        h4.metric("💓 Pulse Pressure", f"{int(res.get('pulse_pressure', 0))}", "Wide" if res.get('pulse_pressure', 0) > 60 else "Normal", help="SBP - DBP")
+        
+        # MAP (Red if < 65)
+        map_val = int(res.get('map_val', 0))
+        h1.metric(
+            "MAP", 
+            f"{map_val} mmHg", 
+            "Low" if map_val < 65 else "Normal",
+            delta_color="inverse" if map_val < 65 else "normal",
+            help="Mean Arterial Pressure"
+        )
+        
+        # SIRS Score (Red if >= 2)
+        sirs = res.get('sirs_score', 0)
+        h2.metric(
+            "⚡ SIRS Score", 
+            f"{sirs}/4", 
+            "Alert" if sirs >= 2 else "Normal",
+            delta_color="inverse" if sirs >= 2 else "normal",
+            help="Inflammatory Response"
+        )
+        
+        # Shock Index (Red if > 0.9)
+        si = res.get('shock_index', 0)
+        h3.metric(
+            "💔 Shock Index", 
+            f"{si:.2f}", 
+            "Critical" if si > 0.9 else "Normal",
+            delta_color="inverse" if si > 0.9 else "normal",
+            help="HR / SBP"
+        )
+        
+        # Pulse Pressure (Red if Wide > 60 or Narrow < 25)
+        pp = int(res.get('pulse_pressure', 0))
+        if pp > 60:
+            pp_status = "Wide (>60)"
+            pp_color = "inverse"
+        elif pp < 25 and pp > 0:
+            pp_status = "Narrow (<25)"
+            pp_color = "inverse"
+        else:
+            pp_status = "Normal"
+            pp_color = "normal"
+            
+        h4.metric(
+            "💓 Pulse Pressure", 
+            f"{pp}", 
+            pp_status,
+            delta_color=pp_color,
+            help="SBP - DBP"
+        )
 
         st.divider()
 
