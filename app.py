@@ -49,7 +49,7 @@ def extract_data_from_soap(note_text):
     """
     
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash') 
+        model = genai.GenerativeModel('gemini-1.5-flash') 
         response = model.generate_content(prompt)
         
         # Clean the response to ensure it is pure JSON
