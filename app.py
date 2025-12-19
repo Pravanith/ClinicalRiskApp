@@ -505,19 +505,42 @@ def render_risk_calculator():
 
         st.divider()
 
-        # --- EXPLANATION SECTION ---
+        # --- EXPLANATION SECTION (UNIFIED & UPGRADED) ---
         with st.expander("🧠 Clinical Logic: Why is this patient Critical?"):
             tab1, tab2, tab3, tab4 = st.tabs(["Bleeding Risk", "AKI Risk", "Sepsis (qSOFA)", "Hemodynamics"])
             
-            with tab1: # Bleeding
+            # --- TAB 1: BLEEDING (UPGRADED with Liver/GI checks) ---
+            with tab1:
                 st.write("### Factors driving the Bleeding Risk Score:")
-                if res.get('inr', 0) > 3.5: st.error(f"• **Critical INR ({res.get('inr')}):** +40 points (Major Driver)")
-                if res.get('anticoag'): st.warning("• **Anticoagulant Use:** +35 points")
-                if res.get('age', 0) > 65: st.info(f"• **Age ({res.get('age')}):** +10 points (Geriatric Risk)")
-                if not (res.get('inr', 0) > 3.5 or res.get('anticoag') or res.get('age', 0) > 65):
-                    st.success("No major bleeding risk factors identified.")
+                
+                # 1. Coagulation
+                if res.get('inr', 0) > 3.5: 
+                    st.error(f"• **Critical INR ({res.get('inr')}):** Major driver of hemorrhage risk (+40 pts).")
+                elif res.get('inr', 0) > 1.2:
+                    st.warning(f"• **Elevated INR ({res.get('inr')}):** Contributes to risk.")
+                if res.get('anticoag'): 
+                    st.warning("• **Anticoagulant Use:** Patient is on blood thinners (+35 pts).")
+                
+                # 2. Comorbidities (The extra detail you need)
+                if res.get('liver_disease'):
+                    st.error("• **Liver Disease:** Impaired clotting factors & thrombocytopenia risk.")
+                if res.get('gib_input'): 
+                     st.error("• **History of GI Bleed:** Strong predictor of recurrence.")
+                
+                # 3. Vitals & Demographics
+                if res.get('sys_bp', 0) > 160:
+                    st.warning(f"• **Uncontrolled Hypertension (SBP {res.get('sys_bp')}):** Increases vessel rupture risk.")
+                if res.get('age', 0) > 65: 
+                    st.info(f"• **Age ({res.get('age')}):** Geriatric fragility factor (+10 pts).")
+                
+                # 4. Safety Check
+                has_risk = (res.get('inr', 0) > 1.5 or res.get('anticoag') or res.get('age', 0) > 65 or 
+                           res.get('liver_disease') or res.get('gib_input') or res.get('sys_bp', 0) > 160)
+                if not has_risk:
+                    st.success("✅ No major bleeding risk factors identified.")
 
-            with tab2: # AKI
+            # --- TAB 2: AKI (Your existing detailed code) ---
+            with tab2: 
                 st.write("### Factors driving AKI Risk:")
                 if res.get('diuretic'): st.warning("• **Diuretic Use:** +30 points")
                 if res.get('acei'): st.warning("• **ACEi/ARB Use:** +40 points")
@@ -525,7 +548,8 @@ def render_risk_calculator():
                 if not (res.get('diuretic') or res.get('acei') or res.get('sys_bp', 0) < 90):
                     st.success("No major nephrotoxic risks identified.")
 
-            with tab3: # Sepsis
+            # --- TAB 3: SEPSIS (Your existing detailed code) ---
+            with tab3: 
                 st.write("### Sepsis Assessment (qSOFA Criteria)")
                 sepsis_points = 0
                 if res.get('resp_rate', 0) >= 22:
@@ -539,7 +563,8 @@ def render_risk_calculator():
                     sepsis_points += 1
                 if sepsis_points == 0: st.success("Patient meets 0 qSOFA criteria (Low Sepsis Risk).")
 
-            with tab4: # Hemodynamics
+            # --- TAB 4: HEMODYNAMICS (Your existing detailed code) ---
+            with tab4: 
                 st.write("### Hemodynamic Stability Checks")
                 current_map = int(res.get('map_val', 0))
                 current_si = res.get('shock_index', 0)
