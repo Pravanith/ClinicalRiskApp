@@ -6,15 +6,6 @@ import backend as bk
 import random
 import datetime
 import json
-
-import streamlit as st
-import pandas as pd
-import numpy as np
-import altair as alt
-import backend as bk
-import random
-import datetime
-import json
 import google.generativeai as genai
 
 # --- CONFIGURATION: CONNECT TO AI ---
