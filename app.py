@@ -19,19 +19,17 @@ try:
 except Exception as e:
     st.error(f"⚠️ AI Configuration Error: {e}")
 
-# --- 1. AI Extraction Function ---
-# --- 1. AI Extraction Function (Robust Version) ---
+# --- 1. AI Extraction Function (Final Fix) ---
 def extract_data_from_soap(note_text):
     """
     Uses Gemini to extract structured clinical data.
-    Tries multiple model versions to avoid 404/Quota errors.
     """
-    # Priority list: Fastest/Newest -> Stable/Older
+    # 1. We prioritize 'lite' to avoid Quota Errors (429)
+    # 2. We fallback to 'flash' if lite fails
     candidate_models = [
-        'gemini-1.5-flash',
-        'gemini-1.5-flash-latest',
-        'gemini-1.0-pro', 
-        'gemini-pro'
+        'gemini-2.0-flash-lite', 
+        'gemini-2.0-flash',
+        'gemini-flash-latest'
     ]
 
     prompt = f"""
@@ -60,10 +58,9 @@ def extract_data_from_soap(note_text):
 
     last_error = None
 
-    # Loop through models until one works
     for model_name in candidate_models:
         try:
-            # print(f"Trying model: {model_name}...") # Debug log
+            # st.toast(f"Trying AI model: {model_name}...") # Optional: Show user which model is running
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
             
@@ -72,24 +69,9 @@ def extract_data_from_soap(note_text):
             
         except Exception as e:
             last_error = e
-            # If it's a "Not Found" error, try the next model. 
-            # If it's "Quota", we might want to stop, but let's keep trying for now.
             continue
 
-    # If ALL models fail, show the available models to debug
-    st.error(f"❌ All AI models failed. Last error: {last_error}")
-    
-    # --- DEBUGGER: Print valid models for your API Key ---
-    try:
-        st.write("🔍 Debug: Listing valid models for your API key...")
-        valid_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                valid_models.append(m.name)
-        st.code(valid_models)
-    except Exception as e2:
-        st.error(f"Could not list models: {e2}")
-
+    st.error(f"❌ Extraction failed. Last error: {last_error}")
     return None
 # ---------------------------------------------------------
 # 1. PAGE CONFIGURATION
