@@ -19,17 +19,17 @@ try:
 except Exception as e:
     st.error(f"⚠️ AI Configuration Error: {e}")
 
-# --- 1. AI Extraction Function (Final Fix) ---
+# --- 1. AI Extraction Function (Updated for Labs) ---
 def extract_data_from_soap(note_text):
     """
     Uses Gemini to extract structured clinical data.
     """
-    # 1. We prioritize 'lite' to avoid Quota Errors (429)
-    # 2. We fallback to 'flash' if lite fails
+    # Prioritize Lite model to avoid Quota limits
     candidate_models = [
         'gemini-2.0-flash-lite', 
         'gemini-2.0-flash',
-        'gemini-flash-latest'
+        'gemini-flash-latest',
+        'gemini-pro'
     ]
 
     prompt = f"""
@@ -38,6 +38,7 @@ def extract_data_from_soap(note_text):
     If a value is not mentioned, return null.
     
     Keys to extract:
+    # --- VITALS ---
     - age (integer)
     - gender (string: "Male" or "Female")
     - weight_kg (float)
@@ -48,25 +49,42 @@ def extract_data_from_soap(note_text):
     - rr (respiratory rate, integer)
     - temp_c (temperature in celsius, float)
     - o2_sat (integer)
-    - creatinine (float)
-    - inr (float)
-    - anticoagulant_use (boolean: true if taking warfarin, eliquis, heparin, etc.)
     
+    # --- LABS ---
+    - creatinine (float)
+    - bun (integer)
+    - potassium (float)
+    - glucose (integer)
+    - wbc (float)
+    - hgb (float)
+    - platelets (integer)
+    - inr (float)
+    - lactate (float)
+    
+    # --- HISTORY / MEDS (Booleans) ---
+    - anticoagulant_use (boolean: true if taking warfarin, eliquis, xarelto, heparin, etc.)
+    - liver_disease (boolean: cirrhosis, hepatitis, etc.)
+    - heart_failure (boolean: CHF, low EF)
+    - gi_bleed (boolean: history of gastrointestinal bleeding)
+    - nsaid_use (boolean: ibuprofen, motrin, naproxen, etc.)
+    - active_chemo (boolean)
+    - diuretic_use (boolean: lasix, furosemide, hctz)
+    - acei_arb_use (boolean: lisinopril, losartan, etc.)
+    - insulin_use (boolean)
+    - uncontrolled_diabetes (boolean: high A1c mentioned)
+    - altered_mental (boolean: confusion, lethargy, AMS)
+
     Clinical Note:
     "{note_text}"
     """
 
     last_error = None
-
     for model_name in candidate_models:
         try:
-            # st.toast(f"Trying AI model: {model_name}...") # Optional: Show user which model is running
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
-            
             cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
             return json.loads(cleaned_text)
-            
         except Exception as e:
             last_error = e
             continue
@@ -139,29 +157,40 @@ def render_cover_page():
         st.session_state['entered_app'] = True
         st.rerun()
 
-# --- MODULE 1: RISK CALCULATOR (FIXED WIDGET CONFLICTS) ---
+# --- MODULE 1: RISK CALCULATOR (COMPLETE & FIXED) ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator")
     
-    # --- 1. INITIALIZE DEFAULTS (Crucial Step to prevent Widget Errors) ---
-    # We set the default values in Session State BEFORE creating the widgets.
-    # This way, we don't need to use the 'value=' argument in the widgets, avoiding the conflict.
+    # --- 1. INITIALIZE DEFAULTS (Prevents "KeyError" crashes) ---
     defaults = {
-        'age_input': 0, 'gender_input': "Male",
+        # Demographics & Vitals
+        'age_input': 0, 'gender_input': "Male", 
         'weight_input': 0.0, 'w_unit': 'kg', 'height_input': 0,
-        'sbp_input': 0, 'dbp_input': 0, 'hr_input': 0, 'rr_input': 0,
+        'sbp_input': 0, 'dbp_input': 0, 'hr_input': 0, 'rr_input': 0, 
         'temp_input': 0.0, 'o2_input': 0,
-        'creat_input': 0.0, 'inr_input': 0.0,
-        'anticoag_input': False
+        
+        # Labs
+        'creat_input': 0.0, 'bun_input': 0, 
+        'k_input': 0.0, 'glc_input': 0, 
+        'wbc_input': 0.0, 'hgb_input': 0.0, 
+        'plt_input': 0, 'inr_input': 0.0, 'lac_input': 0.0,
+        
+        # History (Checkboxes)
+        'anticoag_input': False, 'liver_input': False,
+        'chf_input': False, 'gib_input': False,
+        'nsaid_input': False, 'chemo_input': False,
+        'diuretic_input': False, 'acei_input': False,
+        'insulin_input': False, 'dm_input': False, 'ams_input': False
     }
+    
     for key, default_val in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = default_val
 
     # --- 2. AI AUTO-FILL SECTION ---
     with st.expander("⚡ AI Auto-Fill (Paste SOAP Note)"):
-        st.caption("Paste a clinical note below to auto-populate vitals and demographics.")
-        soap_note = st.text_area("Clinical Note", placeholder="Example: 68yo male, BP 150/90, HR 110, Cr 1.5, on Warfarin...")
+        st.caption("Paste a clinical note below to auto-populate vitals, labs, and history.")
+        soap_note = st.text_area("Clinical Note", placeholder="Example: 68yo male, BP 150/90, HR 110, Cr 1.5, Lactate 4.0, hx of CHF...")
         
         if st.button("✨ Extract Data from Note"):
             if soap_note:
@@ -169,7 +198,9 @@ def render_risk_calculator():
                     data = extract_data_from_soap(soap_note)
                     
                     if data:
-                        # Update Session State (The widgets will auto-update because they share the same keys)
+                        # --- MAP AI DATA TO WIDGET KEYS ---
+                        
+                        # Vitals
                         if data.get('age'): st.session_state['age_input'] = int(data['age'])
                         if data.get('gender'): st.session_state['gender_input'] = data['gender']
                         if data.get('weight_kg'): 
@@ -182,10 +213,30 @@ def render_risk_calculator():
                         if data.get('rr'): st.session_state['rr_input'] = int(data['rr'])
                         if data.get('temp_c'): st.session_state['temp_input'] = float(data['temp_c'])
                         if data.get('o2_sat'): st.session_state['o2_input'] = int(data['o2_sat'])
+                        
+                        # Labs
                         if data.get('creatinine'): st.session_state['creat_input'] = float(data['creatinine'])
+                        if data.get('bun'): st.session_state['bun_input'] = int(data['bun'])
+                        if data.get('potassium'): st.session_state['k_input'] = float(data['potassium'])
+                        if data.get('glucose'): st.session_state['glc_input'] = int(data['glucose'])
+                        if data.get('wbc'): st.session_state['wbc_input'] = float(data['wbc'])
+                        if data.get('hgb'): st.session_state['hgb_input'] = float(data['hgb'])
+                        if data.get('platelets'): st.session_state['plt_input'] = int(data['platelets'])
                         if data.get('inr'): st.session_state['inr_input'] = float(data['inr'])
-                        if data.get('anticoagulant_use') is not None: 
-                            st.session_state['anticoag_input'] = bool(data['anticoagulant_use'])
+                        if data.get('lactate'): st.session_state['lac_input'] = float(data['lactate'])
+                        
+                        # History (Booleans)
+                        if data.get('anticoagulant_use') is not None: st.session_state['anticoag_input'] = bool(data['anticoagulant_use'])
+                        if data.get('liver_disease') is not None: st.session_state['liver_input'] = bool(data['liver_disease'])
+                        if data.get('heart_failure') is not None: st.session_state['chf_input'] = bool(data['heart_failure'])
+                        if data.get('gi_bleed') is not None: st.session_state['gib_input'] = bool(data['gi_bleed'])
+                        if data.get('nsaid_use') is not None: st.session_state['nsaid_input'] = bool(data['nsaid_use'])
+                        if data.get('active_chemo') is not None: st.session_state['chemo_input'] = bool(data['active_chemo'])
+                        if data.get('diuretic_use') is not None: st.session_state['diuretic_input'] = bool(data['diuretic_use'])
+                        if data.get('acei_arb_use') is not None: st.session_state['acei_input'] = bool(data['acei_arb_use'])
+                        if data.get('insulin_use') is not None: st.session_state['insulin_input'] = bool(data['insulin_use'])
+                        if data.get('uncontrolled_diabetes') is not None: st.session_state['dm_input'] = bool(data['uncontrolled_diabetes'])
+                        if data.get('altered_mental') is not None: st.session_state['ams_input'] = bool(data['altered_mental'])
                         
                         st.success("✅ Data Extracted! Form updated below.")
                         st.rerun() 
@@ -203,8 +254,6 @@ def render_risk_calculator():
             with col_left:
                 st.markdown("##### 👤 Patient Profile")
                 l1, l2 = st.columns(2)
-                
-                # NOTE: We removed 'value=' because the key handles it now
                 age = l1.number_input("Age (Years)", min_value=0, max_value=120, key='age_input')
                 gender = l2.selectbox("Gender", ["Male", "Female"], key='gender_input')
                 
@@ -233,7 +282,7 @@ def render_risk_calculator():
                 temp_c = v5.number_input("Temp °C (Normal: 36.5-37.5)", 0.0, 45.0, step=0.1, key='temp_input')
                 o2_sat = v6.number_input("O2 Sat % (Normal: >95%)", 0, 100, key='o2_input')
 
-# --- RIGHT COLUMN: Labs & History (FIXED MISSING KEYS) ---
+            # --- RIGHT COLUMN: Labs & History ---
             with col_right:
                 st.markdown("##### 🧪 Critical Labs")
                 lab1, lab2 = st.columns(2)
@@ -245,7 +294,6 @@ def render_risk_calculator():
                 glucose = lab4.number_input("Glucose (70-100 mg/dL)", 0, 1000, 0, key='glc_input')
                 
                 lab5, lab6 = st.columns(2)
-                # ADDED KEYS HERE:
                 wbc = lab5.number_input("WBC (4.5-11.0 10^9/L)", 0.0, 50.0, 0.0, key='wbc_input')
                 hgb = lab6.number_input("Hemoglobin (13.5-17.5 g/dL)", 0.0, 20.0, 0.0, key='hgb_input')
                 
@@ -253,7 +301,6 @@ def render_risk_calculator():
                 platelets = lab7.number_input("Platelets (150-450 10^9/L)", 0, 1000, 0, key='plt_input')
                 inr = lab8.number_input("INR (Clotting Time) [0.9-1.1]", 0.0, 10.0, key='inr_input')
                 
-                # ADDED KEY HERE:
                 lactate = st.number_input("Lactate (Normal: < 2.0 mmol/L)", 0.0, 20.0, 0.0, key='lac_input')
 
                 st.markdown("##### 📋 Medical History")
@@ -266,16 +313,16 @@ def render_risk_calculator():
                 gi_bleed = h4.checkbox("History of GI Bleed", key='gib_input')
                 
                 m1, m2 = st.columns(2)
-                nsaid = m1.checkbox("NSAID Use")
-                active_chemo = m2.checkbox("Active Chemo")
+                nsaid = m1.checkbox("NSAID Use", key='nsaid_input')
+                active_chemo = m2.checkbox("Active Chemo", key='chemo_input')
                 
                 m3, m4 = st.columns(2)
-                diuretic = m3.checkbox("Diuretic Use")
-                acei = m4.checkbox("ACEi/ARB")
+                diuretic = m3.checkbox("Diuretic Use", key='diuretic_input')
+                acei = m4.checkbox("ACEi/ARB", key='acei_input')
                 
                 m5, m6 = st.columns(2)
-                insulin = m5.checkbox("Insulin")
-                hba1c_high = m6.checkbox("Uncontrolled Diabetes")
+                insulin = m5.checkbox("Insulin", key='insulin_input')
+                hba1c_high = m6.checkbox("Uncontrolled Diabetes", key='dm_input')
                 
                 altered_mental = st.checkbox("Altered Mental Status (Confusion)", key='ams_input')
                 pain = 0
@@ -285,40 +332,38 @@ def render_risk_calculator():
 
     # --- LOGIC & RESULTS ---
     if submitted:
-        # (This part remains exactly the same as your previous code)
+        # 1. Calc Hemodynamics
         final_temp_c = temp_c 
-        
         if sys_bp > 0:
             map_val = (sys_bp + (2 * dia_bp)) / 3 
             pulse_pressure = sys_bp - dia_bp
             shock_index = hr / sys_bp if sys_bp > 0 else 0
         else:
-            map_val = 0
-            pulse_pressure = 0
-            shock_index = 0
-            
+            map_val, pulse_pressure, shock_index = 0, 0, 0
+        
         bun_creat_ratio = bun / creat if creat > 0 else 0
         
+        # 2. Run ML Model (Bleeding Risk)
         if age > 0 and sys_bp > 0:
             input_df = pd.DataFrame({
-                'age': [age],
-                'inr': [inr],
-                'systolic_bp': [sys_bp], 
-                'anticoagulant': [1 if anticoag else 0],
-                'gender': [gender],
+                'age': [age], 'inr': [inr], 'systolic_bp': [sys_bp], 
+                'anticoagulant': [1 if anticoag else 0], 'gender': [gender],
                 'liver_disease': [1 if liver_disease else 0]
             })
-
             try:
+                # Try prediction (XGBoost)
                 pred_bleeding = bleeding_model.predict_proba(input_df)[0][1] * 100
             except AttributeError:
+                # Fallback (Regressor)
                 pred_bleeding = float(bleeding_model.predict(input_df)[0])
 
+            # 3. Run Clinical Rules
             pred_aki = bk.calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
             pred_sepsis = bk.calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
             pred_hypo = bk.calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
             sirs_score = bk.calculate_sirs_score(final_temp_c, hr, resp_rate, wbc)
             
+            # HAS-BLED (Manual Check)
             has_bled = 0 
             if sys_bp > 160: has_bled += 1
             if creat > 2.2 or liver_disease: has_bled += 1
@@ -326,36 +371,28 @@ def render_risk_calculator():
             if inr > 1.0: has_bled += 1
             if age > 65: has_bled += 1
             if nsaid or anticoag: has_bled += 1
-
+            
         else:
-            pred_bleeding = 0.0
-            pred_aki = 0
-            pred_sepsis = 0
-            pred_hypo = 0
-            sirs_score = 0
-            has_bled = 0
+            pred_bleeding, pred_aki, pred_sepsis, pred_hypo, sirs_score, has_bled = 0.0, 0, 0, 0, 0, 0
             
         status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis >= 2) else 'Stable'
         
+        # 4. Save to Database
         bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
         
-        st.session_state['patient_data'] = {
-            'id': f"Patient-{age}-{int(sys_bp)}", 
-            'age': age, 'gender': gender, 'weight': weight_kg,
-            'sys_bp': sys_bp, 'dia_bp': dia_bp, 'hr': hr, 'resp_rate': resp_rate, 
-            'temp_c': temp_c, 'o2_sat': o2_sat, 'pain': pain,
-            'creat': creat, 'potassium': potassium, 'inr': inr, 'bun': bun,
-            'wbc': wbc, 'hgb': hgb, 'platelets': platelets, 'lactate': lactate, 'glucose': glucose,
+        # 5. Save Results to Session
+        st.session_state['analysis_results'] = {
             'bleeding_risk': float(pred_bleeding), 'aki_risk': int(pred_aki),
             'sepsis_risk': int(pred_sepsis), 'hypo_risk': int(pred_hypo),
-            'sirs_score': sirs_score, 'status': status_calc, 'map_val': map_val, 'bmi': bmi, 'has_bled': has_bled,
-            'shock_index': shock_index, 'pulse_pressure': pulse_pressure, 'bun_creat_ratio': bun_creat_ratio,
-            'anticoag': anticoag, 'liver_disease': liver_disease, 'diuretic': diuretic,
-            'acei': acei, 'heart_failure': heart_failure, 'hba1c_high': hba1c_high,
-            'altered_mental': altered_mental
+            'sirs_score': sirs_score, 'status': status_calc, 'map_val': map_val, 
+            'shock_index': shock_index, 'pulse_pressure': pulse_pressure,
+            'age': age, 'sys_bp': sys_bp, 'inr': inr, 'anticoag': anticoag,
+            'resp_rate': resp_rate, 'altered_mental': altered_mental, 
+            'temp_c': temp_c, 'o2_sat': o2_sat, 'hr': hr, 'dia_bp': dia_bp,
+            'glucose': glucose, 'potassium': potassium, 'hgb': hgb, 'wbc': wbc, 
+            'platelets': platelets, 'lactate': lactate, 'creat': creat,
+            'diuretic': diuretic, 'acei': acei, 'liver_disease': liver_disease, 'heart_failure': heart_failure
         }
-        
-        st.session_state['analysis_results'] = st.session_state['patient_data']
 
     # --- RESULTS DISPLAY ---
     if 'analysis_results' in st.session_state:
@@ -364,6 +401,7 @@ def render_risk_calculator():
         st.divider()
         st.subheader("📊 Risk Stratification Results")
         
+        # Row 1: The Major Scores
         r1, r2, r3, r4 = st.columns(4)
         r1.metric("🩸 Bleeding Risk", f"{res['bleeding_risk']:.1f}%", 
                  "High" if res['bleeding_risk'] > 50 else "Normal", help="XGBoost Prediction")
@@ -372,6 +410,7 @@ def render_risk_calculator():
         r3.metric("🦠 Sepsis Score", f"{res['sepsis_risk']}", 
                  "Alert" if res['sepsis_risk'] >= 2 else "Normal", help="qSOFA Score")
         
+        # Dynamic Glucose Alert
         current_gluc = res.get('glucose', 0)
         if current_gluc > 180:
              r4.metric("🍬 Glycemia", f"{int(current_gluc)} mg/dL", "Hyper (High)", delta_color="inverse")
@@ -380,6 +419,7 @@ def render_risk_calculator():
         else:
              r4.metric("🍬 Hypo Risk", f"{res.get('hypo_risk', 0)}%", "Normal")
 
+        # Row 2: Hemodynamics
         h1, h2, h3, h4 = st.columns(4)
         h1.metric("MAP", f"{int(res.get('map_val', 0))} mmHg", help="Mean Arterial Pressure")
         h2.metric("⚡ SIRS Score", f"{res.get('sirs_score', 0)}/4", help="Inflammatory Response")
@@ -392,31 +432,23 @@ def render_risk_calculator():
         with st.expander("🧠 Clinical Logic: Why is this patient Critical?"):
             tab1, tab2, tab3, tab4 = st.tabs(["Bleeding Risk", "AKI Risk", "Sepsis (qSOFA)", "Hemodynamics"])
             
-            with tab1:
+            with tab1: # Bleeding
                 st.write("### Factors driving the Bleeding Risk Score:")
-                if res.get('inr', 0) > 3.5:
-                    st.error(f"• **Critical INR ({res.get('inr')}):** +40 points (Major Driver)")
-                if res.get('anticoag'): 
-                    st.warning("• **Anticoagulant Use:** +35 points")
-                if res.get('age', 0) > 65:
-                    st.info(f"• **Age ({res.get('age')}):** +10 points (Geriatric Risk)")
-                
+                if res.get('inr', 0) > 3.5: st.error(f"• **Critical INR ({res.get('inr')}):** +40 points (Major Driver)")
+                if res.get('anticoag'): st.warning("• **Anticoagulant Use:** +35 points")
+                if res.get('age', 0) > 65: st.info(f"• **Age ({res.get('age')}):** +10 points (Geriatric Risk)")
                 if not (res.get('inr', 0) > 3.5 or res.get('anticoag') or res.get('age', 0) > 65):
                     st.success("No major bleeding risk factors identified.")
 
-            with tab2:
+            with tab2: # AKI
                 st.write("### Factors driving AKI Risk:")
-                if res.get('diuretic'):
-                    st.warning("• **Diuretic Use:** +30 points (Volume depletion risk)")
-                if res.get('acei'):
-                    st.warning("• **ACEi/ARB Use:** +40 points (Renal perfusion risk)")
-                if res.get('sys_bp', 0) < 90:
-                    st.error(f"• **Hypotension (SBP {res.get('sys_bp', 0)}):** +20 points (Perfusion threat)")
-                
+                if res.get('diuretic'): st.warning("• **Diuretic Use:** +30 points")
+                if res.get('acei'): st.warning("• **ACEi/ARB Use:** +40 points")
+                if res.get('sys_bp', 0) < 90: st.error(f"• **Hypotension (SBP {res.get('sys_bp', 0)}):** +20 points")
                 if not (res.get('diuretic') or res.get('acei') or res.get('sys_bp', 0) < 90):
                     st.success("No major nephrotoxic risks identified.")
 
-            with tab3:
+            with tab3: # Sepsis
                 st.write("### Sepsis Assessment (qSOFA Criteria)")
                 sepsis_points = 0
                 if res.get('resp_rate', 0) >= 22:
@@ -428,147 +460,52 @@ def render_risk_calculator():
                 if res.get('altered_mental'):
                     st.error("• **Altered Mental Status:** +1 Point")
                     sepsis_points += 1
-                
-                if sepsis_points == 0:
-                    st.success("Patient meets 0 qSOFA criteria (Low Sepsis Risk).")
+                if sepsis_points == 0: st.success("Patient meets 0 qSOFA criteria (Low Sepsis Risk).")
 
-            with tab4:
+            with tab4: # Hemodynamics
                 st.write("### Hemodynamic Stability Checks")
-                
                 current_map = int(res.get('map_val', 0))
                 current_si = res.get('shock_index', 0)
-
                 st.write(f"**Mean Arterial Pressure (MAP):** {current_map} mmHg")
-                if current_map < 65:
-                    st.error("• MAP < 65 mmHg: Critical organ perfusion threat.")
-                else:
-                    st.success("• MAP > 65 mmHg: Perfusion is adequate.")
-                    
-                st.divider()
-                
+                if current_map < 65: st.error("• MAP < 65 mmHg: Critical organ perfusion threat.")
+                else: st.success("• MAP > 65 mmHg: Perfusion is adequate.")
                 st.write(f"**Shock Index (HR/SBP):** {current_si:.2f}")
-                if current_si > 0.9:
-                    st.error("• Index > 0.9: High probability of hidden bleeding or shock.")
-                elif current_si > 0.7:
-                    st.warning("• Index 0.7 - 0.9: Monitor closely for compensation.")
-                else:
-                    st.success("• Index < 0.7: Hemodynamically stable.")
+                if current_si > 0.9: st.error("• Index > 0.9: High probability of shock.")
+                elif current_si > 0.7: st.warning("• Index 0.7 - 0.9: Monitor closely.")
+                else: st.success("• Index < 0.7: Hemodynamically stable.")
        
-       # --- CLINICAL ALERTS & PROTOCOL SUGGESTIONS (HIGHS & LOWS) ---
+        # --- CLINICAL ALERTS ---
         st.markdown("### ⚠️ Clinical Alerts & AI Recommendations")
         violations = 0 
         
-        # --- A. AIRWAY & BREATHING ---
+        # Airway/Breathing
         if res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 88: 
-            st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%)")
-            st.info("👉 **Protocol:** 15L O2 via Non-Rebreather. Prepare for RSI/Intubation. Check ABG.")
-            violations += 1
+            st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%)"); violations += 1
         elif res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 92:
-            st.warning(f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%)")
-            violations += 1
-        
+            st.warning(f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%)"); violations += 1
         if res.get('resp_rate', 0) > 30:
-            st.error(f"🚨 SEVERE TACHYPNEA (RR {res['resp_rate']})")
-            violations += 1
-        elif res.get('resp_rate', 0) < 8 and res.get('resp_rate', 0) > 0:
-            st.error(f"🚨 RESPIRATORY DEPRESSION (RR {res['resp_rate']})")
-            violations += 1
+            st.error(f"🚨 SEVERE TACHYPNEA (RR {res['resp_rate']})"); violations += 1
 
-        # --- B. CIRCULATION ---
-        if res.get('sys_bp', 0) > 180 or res.get('dia_bp', 0) > 120: 
-            st.error(f"🚨 HYPERTENSIVE CRISIS (BP {res['sys_bp']}/{res['dia_bp']})")
-            violations += 1
-        elif res.get('sys_bp', 0) > 0 and res.get('sys_bp', 0) < 90: 
-            st.error(f"🚨 SHOCK / HYPOTENSION (BP {res['sys_bp']}/{res['dia_bp']})")
-            st.info("👉 **Protocol:** Trendelenburg position. 500mL Fluid Bolus. Start Norepinephrine if MAP < 65.")
-            violations += 1
-            
-        if res.get('hr', 0) > 130:
-            st.error(f"🚨 SEVERE TACHYCARDIA (HR {res['hr']})")
-            violations += 1
-        elif res.get('hr', 0) > 0 and res.get('hr', 0) < 40:
-            st.error(f"🚨 SEVERE BRADYCARDIA (HR {res['hr']})")
-            violations += 1
+        # Circulation
+        if res.get('sys_bp', 0) > 180: st.error(f"🚨 HYPERTENSIVE CRISIS"); violations += 1
+        elif res.get('sys_bp', 0) > 0 and res.get('sys_bp', 0) < 90: st.error(f"🚨 SHOCK / HYPOTENSION"); violations += 1
+        if res.get('hr', 0) > 130: st.error(f"🚨 SEVERE TACHYCARDIA"); violations += 1
 
-        # --- C. DISABILITY / EXPOSURE ---
-        if res.get('temp_c', 0) > 39.0:
-             st.error(f"🚨 HIGH FEVER ({res['temp_c']}°C)")
-             violations += 1
-        elif res.get('temp_c', 0) < 35.0 and res.get('temp_c', 0) > 0:
-             st.error(f"🚨 HYPOTHERMIA ({res['temp_c']}°C)")
-             violations += 1
-             
-        # --- D. CRITICAL LABS ---
-        if res.get('glucose', 0) > 400:
-            st.error(f"🚨 SEVERE HYPERGLYCEMIA ({res['glucose']} mg/dL)")
-            violations += 1
-        elif res.get('glucose', 0) > 0 and res.get('glucose', 0) < 70:
-            st.error(f"🚨 HYPOGLYCEMIA ({res['glucose']} mg/dL)")
-            st.info("👉 **Protocol:** D50 IV Push or Glucagon IM immediately. Recheck glucose in 15 mins.")
-            violations += 1
-
-        if res.get('potassium', 0) > 6.0:
-            st.error(f"🚨 CRITICAL HYPERKALEMIA (K+ {res['potassium']})")
-            violations += 1
-        elif res.get('potassium', 0) > 0 and res.get('potassium', 0) < 2.5:
-            st.error(f"🚨 CRITICAL HYPOKALEMIA (K+ {res['potassium']})")
-            violations += 1
-            
-        if res.get('hgb', 0) > 0 and res.get('hgb', 0) < 7.0:
-             st.error(f"🚨 CRITICAL ANEMIA (Hgb {res['hgb']} g/dL)")
-             violations += 1
-
-        if res.get('wbc', 0) > 0 and res.get('wbc', 0) < 1.0:
-             st.error(f"🚨 SEVERE NEUTROPENIA (WBC {res['wbc']})")
-             violations += 1
-        elif res.get('wbc', 0) > 20.0:
-             st.error(f"🚨 LEUKOCYTOSIS / INFECTION (WBC {res['wbc']})")
-             violations += 1
-
-        if res.get('platelets', 0) > 0 and res.get('platelets', 0) < 20:
-             st.error(f"🚨 CRITICAL THROMBOCYTOPENIA (Plt {res['platelets']})")
-             violations += 1
-            
-        # --- E. METABOLIC, RENAL & ACID-BASE ---
-        if res.get('lactate', 0) > 4.0:
-             st.error(f"🚨 SEVERE LACTIC ACIDOSIS ({res['lactate']} mmol/L)")
-             violations += 1
-
-        if res.get('map_val', 0) > 0 and res.get('map_val', 0) < 65:
-             st.error(f"🚨 CRITICAL LOW MAP ({int(res.get('map_val', 0))} mmHg)")
-             violations += 1
-            
-        # --- F. PREDICTIVE MODELS ---
-        if res.get('aki_risk', 0) >= 50:
-             st.error(f"🚨 HIGH AKI RISK ({res['aki_risk']}%)")
-             violations += 1
-
-        if res.get('bleeding_risk', 0) >= 50:
-             st.error(f"🚨 CRITICAL BLEEDING RISK ({res['bleeding_risk']:.1f}%)")
-             violations += 1
-
-        if res.get('sepsis_risk', 0) >= 45:
-             st.error(f"🚨 SEPSIS ALERT (High Probability)")
-             violations += 1
-
-        pp = res.get('pulse_pressure', 40)
-        if pp < 25 and pp > 0:
-             st.error(f"🚨 NARROW PULSE PRESSURE ({int(pp)} mmHg)")
-             violations += 1
+        # Labs
+        if res.get('lactate', 0) >= 4.0: st.error(f"🚨 SEVERE LACTIC ACIDOSIS ({res['lactate']} mmol/L)"); violations += 1
+        elif res.get('lactate', 0) >= 2.0: st.warning(f"⚠️ Elevated Lactate ({res['lactate']} mmol/L)"); violations += 1
         
-        # --- G. DATA INTEGRITY CHECK ---
-        has_demographics = (res.get('age', 0) > 0 or res.get('weight', 0) > 0)
-        has_vitals = (res.get('sys_bp', 0) > 0 or res.get('hr', 0) > 0)
+        if res.get('wbc', 0) > 20.0: st.error(f"🚨 LEUKOCYTOSIS / INFECTION (WBC {res['wbc']})"); violations += 1
+        if res.get('glucose', 0) > 400: st.error(f"🚨 SEVERE HYPERGLYCEMIA"); violations += 1
+        elif res.get('glucose', 0) > 0 and res.get('glucose', 0) < 70: st.error(f"🚨 HYPOGLYCEMIA"); violations += 1
+        
+        if res.get('platelets', 0) > 0 and res.get('platelets', 0) < 20: st.error(f"🚨 CRITICAL THROMBOCYTOPENIA"); violations += 1
+        if res.get('hgb', 0) > 0 and res.get('hgb', 0) < 7.0: st.error(f"🚨 CRITICAL ANEMIA"); violations += 1
 
-        if violations == 0:
-            if not has_demographics and not has_vitals:
-                st.warning("⚠️ **No Data Entered:** Please input patient data to run analysis.")
-            elif has_demographics and not has_vitals:
-                st.warning("⚠️ **Missing Vitals:** Demographics recorded, but Vital Signs (BP, HR, SpO2) are required to determine stability.")
-            else:
-                st.success("✅ **Patient Stable:** No immediate life-threatening protocol violations detected.")
+        if violations == 0: st.success("✅ Patient Stable: No immediate protocol violations.")
         
         st.divider()
+        # AI Assessment Button (Unchanged)
         c_ai, c_txt = st.columns([1, 3])
         with c_ai:
             st.markdown("#### 🤖 AI Assessment")
@@ -581,12 +518,9 @@ def render_risk_calculator():
                     }
                     response = bk.consult_ai_doctor("risk_assessment", "", ai_context)
                     st.session_state['ai_result'] = response
-        
         with c_txt:
-            if 'ai_result' in st.session_state:
-                st.info(st.session_state['ai_result'])
-            else:
-                st.info("👈 Fill out the patient data form above and click 'Run Clinical Analysis' to see results.")    
+            if 'ai_result' in st.session_state: st.info(st.session_state['ai_result'])
+            else: st.info("👈 Fill out the patient data form above and click 'Run Clinical Analysis' to see results.")
 # --- MODULE 2: PATIENT HISTORY---
 def render_history_sql():
     st.subheader("🗄️ Patient History Database")
