@@ -551,38 +551,86 @@ def render_risk_calculator():
                 elif current_si > 0.7: st.warning("• Index 0.7 - 0.9: Monitor closely.")
                 else: st.success("• Index < 0.7: Hemodynamically stable.")
        
-        # --- CLINICAL ALERTS ---
+       # --- CLINICAL ALERTS & PROTOCOLS (RESTORED) ---
         st.markdown("### ⚠️ Clinical Alerts & AI Recommendations")
         violations = 0 
         
-        # Airway/Breathing
+        # --- A. AIRWAY & BREATHING ---
         if res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 88: 
-            st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%)"); violations += 1
+            st.error(f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%)")
+            st.info("👉 **Protocol:** 15L O2 via Non-Rebreather. Prepare for RSI/Intubation. Check ABG.")
+            violations += 1
         elif res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 92:
-            st.warning(f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%)"); violations += 1
+            st.warning(f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%)")
+            violations += 1
+        
         if res.get('resp_rate', 0) > 30:
-            st.error(f"🚨 SEVERE TACHYPNEA (RR {res['resp_rate']})"); violations += 1
+            st.error(f"🚨 SEVERE TACHYPNEA (RR {res['resp_rate']})")
+            violations += 1
+        elif res.get('resp_rate', 0) < 8 and res.get('resp_rate', 0) > 0:
+            st.error(f"🚨 RESPIRATORY DEPRESSION (RR {res['resp_rate']})")
+            violations += 1
 
-        # Circulation
-        if res.get('sys_bp', 0) > 180: st.error(f"🚨 HYPERTENSIVE CRISIS"); violations += 1
-        elif res.get('sys_bp', 0) > 0 and res.get('sys_bp', 0) < 90: st.error(f"🚨 SHOCK / HYPOTENSION"); violations += 1
-        if res.get('hr', 0) > 130: st.error(f"🚨 SEVERE TACHYCARDIA"); violations += 1
+        # --- B. CIRCULATION ---
+        if res.get('sys_bp', 0) > 180: 
+            st.error(f"🚨 HYPERTENSIVE CRISIS (BP {res['sys_bp']}/{res['dia_bp']})")
+            violations += 1
+        elif res.get('sys_bp', 0) > 0 and res.get('sys_bp', 0) < 90: 
+            st.error(f"🚨 SHOCK / HYPOTENSION (BP {res['sys_bp']}/{res['dia_bp']})")
+            st.info("👉 **Protocol:** Trendelenburg position. 500mL Fluid Bolus. Start Norepinephrine if MAP < 65.")
+            violations += 1
+            
+        if res.get('hr', 0) > 130:
+            st.error(f"🚨 SEVERE TACHYCARDIA (HR {res['hr']})")
+            violations += 1
+        elif res.get('hr', 0) > 0 and res.get('hr', 0) < 40:
+            st.error(f"🚨 SEVERE BRADYCARDIA (HR {res['hr']})")
+            violations += 1
 
-        # Labs
-        if res.get('lactate', 0) >= 4.0: st.error(f"🚨 SEVERE LACTIC ACIDOSIS ({res['lactate']} mmol/L)"); violations += 1
-        elif res.get('lactate', 0) >= 2.0: st.warning(f"⚠️ Elevated Lactate ({res['lactate']} mmol/L)"); violations += 1
+        # --- C. DISABILITY / EXPOSURE ---
+        if res.get('temp_c', 0) > 39.0:
+             st.error(f"🚨 HIGH FEVER ({res['temp_c']}°C)")
+             violations += 1
+        elif res.get('temp_c', 0) < 35.0 and res.get('temp_c', 0) > 0:
+             st.error(f"🚨 HYPOTHERMIA ({res['temp_c']}°C)")
+             violations += 1
+
+        # --- D. CRITICAL LABS ---
+        if res.get('glucose', 0) > 400:
+            st.error(f"🚨 SEVERE HYPERGLYCEMIA ({res['glucose']} mg/dL)")
+            violations += 1
+        elif res.get('glucose', 0) > 0 and res.get('glucose', 0) < 70:
+            st.error(f"🚨 HYPOGLYCEMIA ({res['glucose']} mg/dL)")
+            st.info("👉 **Protocol:** D50 IV Push or Glucagon IM immediately. Recheck glucose in 15 mins.")
+            violations += 1
+
+        if res.get('potassium', 0) > 6.0:
+            st.error(f"🚨 CRITICAL HYPERKALEMIA (K+ {res['potassium']})")
+            violations += 1
+        elif res.get('potassium', 0) > 0 and res.get('potassium', 0) < 2.5:
+            st.error(f"🚨 CRITICAL HYPOKALEMIA (K+ {res['potassium']})")
+            violations += 1
+            
+        if res.get('lactate', 0) >= 4.0: 
+            st.error(f"🚨 SEVERE LACTIC ACIDOSIS ({res['lactate']} mmol/L)")
+            st.info("👉 **Protocol:** Aggressive IV fluids (30mL/kg). Draw Blood Cultures. Start Broad-Spectrum Antibiotics.")
+            violations += 1
         
-        if res.get('wbc', 0) > 20.0: st.error(f"🚨 LEUKOCYTOSIS / INFECTION (WBC {res['wbc']})"); violations += 1
-        if res.get('glucose', 0) > 400: st.error(f"🚨 SEVERE HYPERGLYCEMIA"); violations += 1
-        elif res.get('glucose', 0) > 0 and res.get('glucose', 0) < 70: st.error(f"🚨 HYPOGLYCEMIA"); violations += 1
-        
-        if res.get('platelets', 0) > 0 and res.get('platelets', 0) < 20: st.error(f"🚨 CRITICAL THROMBOCYTOPENIA"); violations += 1
-        if res.get('hgb', 0) > 0 and res.get('hgb', 0) < 7.0: st.error(f"🚨 CRITICAL ANEMIA"); violations += 1
+        # --- Check for missing data (optional) ---
+        has_demographics = (res.get('age', 0) > 0 or res.get('weight', 0) > 0)
+        has_vitals = (res.get('sys_bp', 0) > 0 or res.get('hr', 0) > 0)
 
-        if violations == 0: st.success("✅ Patient Stable: No immediate protocol violations.")
+        if violations == 0:
+            if not has_demographics and not has_vitals:
+                st.warning("⚠️ **No Data Entered:** Please input patient data to run analysis.")
+            elif has_demographics and not has_vitals:
+                st.warning("⚠️ **Missing Vitals:** Demographics recorded, but Vital Signs (BP, HR, SpO2) are required to determine stability.")
+            else:
+                st.success("✅ **Patient Stable:** No immediate life-threatening protocol violations detected.")
         
         st.divider()
-        # AI Assessment Button (Unchanged)
+        
+        # --- AI CONSULT BUTTON ---
         c_ai, c_txt = st.columns([1, 3])
         with c_ai:
             st.markdown("#### 🤖 AI Assessment")
