@@ -20,10 +20,20 @@ except Exception as e:
     st.error(f"⚠️ AI Configuration Error: {e}")
 
 # --- 1. AI Extraction Function ---
+# --- 1. AI Extraction Function (Robust Version) ---
 def extract_data_from_soap(note_text):
     """
-    Uses Gemini to extract structured clinical data from unstructured text.
+    Uses Gemini to extract structured clinical data.
+    Tries multiple model versions to avoid 404/Quota errors.
     """
+    # Priority list: Fastest/Newest -> Stable/Older
+    candidate_models = [
+        'gemini-1.5-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-1.0-pro', 
+        'gemini-pro'
+    ]
+
     prompt = f"""
     You are a clinical data extraction assistant. Extract the following values from the note.
     Return ONLY a valid JSON object. Do not add markdown formatting.
@@ -47,21 +57,40 @@ def extract_data_from_soap(note_text):
     Clinical Note:
     "{note_text}"
     """
+
+    last_error = None
+
+    # Loop through models until one works
+    for model_name in candidate_models:
+        try:
+            # print(f"Trying model: {model_name}...") # Debug log
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            
+            cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
+            return json.loads(cleaned_text)
+            
+        except Exception as e:
+            last_error = e
+            # If it's a "Not Found" error, try the next model. 
+            # If it's "Quota", we might want to stop, but let's keep trying for now.
+            continue
+
+    # If ALL models fail, show the available models to debug
+    st.error(f"❌ All AI models failed. Last error: {last_error}")
     
+    # --- DEBUGGER: Print valid models for your API Key ---
     try:
-        model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(prompt)
-        
-        # Clean the response to ensure it is pure JSON
-        cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
-        
-        # DEBUG: Print what the AI sent back (check your logs if this fails)
-        print(f"AI Extraction Result: {cleaned_text}")
-        
-        return json.loads(cleaned_text)
-    except Exception as e:
-        st.error(f"❌ Extraction Failed: {e}")
-        return None
+        st.write("🔍 Debug: Listing valid models for your API key...")
+        valid_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                valid_models.append(m.name)
+        st.code(valid_models)
+    except Exception as e2:
+        st.error(f"Could not list models: {e2}")
+
+    return None
 # ---------------------------------------------------------
 # 1. PAGE CONFIGURATION
 # ---------------------------------------------------------
