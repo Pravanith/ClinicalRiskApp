@@ -1026,14 +1026,13 @@ else:
     elif menu == "🧠 AI Clinical Consultant":
         render_ai_diagnostician()
       # ---------------------------------------------------------
-    # DEBUG: ADMIN PANEL (Hidden inside a dropdown)
+    # DEBUG: ADMIN PANEL (Only visible if URL has ?admin=true)
     # ---------------------------------------------------------
-    st.sidebar.divider()
-    
-    # This creates a small dropdown menu. The button is hidden inside.
-    with st.sidebar.expander("🔧 Admin / Troubleshooting"):
-        st.write("Only use this if the risk score shows round numbers (e.g. 50.0%).")
-        if st.button("⚡ Force Retrain Model"):
+    # Check if the URL is https://.../?admin=true
+    if "admin" in st.query_params: 
+        st.sidebar.divider()
+        st.sidebar.subheader("🔧 Admin Mode")
+        if st.sidebar.button("⚡ Force Retrain Model"):
             with st.spinner("Training new model on Cloud Server..."):
                 try:
                     import train_model
