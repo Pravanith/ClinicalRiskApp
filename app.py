@@ -7,6 +7,27 @@ import random
 import datetime
 import json
 
+import streamlit as st
+import pandas as pd
+import numpy as np
+import altair as alt
+import backend as bk
+import random
+import datetime
+import json
+import google.generativeai as genai
+
+# --- CONFIGURATION: CONNECT TO AI ---
+try:
+    # This checks if the key exists in the cloud vault
+    if "GEMINI_API_KEY" in st.secrets:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    else:
+        # Fallback for local testing (optional, usually safer to use secrets.toml locally too)
+        st.warning("⚠️ AI Key missing. Please add GEMINI_API_KEY to Streamlit Secrets.")
+except Exception as e:
+    st.error(f"⚠️ AI Configuration Error: {e}")
+
 # --- 1. AI Extraction Function ---
 def extract_data_from_soap(note_text):
     """
@@ -37,14 +58,19 @@ def extract_data_from_soap(note_text):
     """
     
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash') # Or 'gemini-pro'
+        model = genai.GenerativeModel('gemini-2.0-flash') 
         response = model.generate_content(prompt)
-        # Clean up the response to ensure it's pure JSON
+        
+        # Clean the response to ensure it is pure JSON
         cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
+        
+        # DEBUG: Print what the AI sent back (check your logs if this fails)
+        print(f"AI Extraction Result: {cleaned_text}")
+        
         return json.loads(cleaned_text)
     except Exception as e:
+        st.error(f"❌ Extraction Failed: {e}")
         return None
-
 # ---------------------------------------------------------
 # 1. PAGE CONFIGURATION
 # ---------------------------------------------------------
