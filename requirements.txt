@@ -1,0 +1,8 @@
+streamlit
+pandas
+numpy
+xgboost
+altair
+scikit-learn
+joblib
+google-generativeai>=0.7.0
