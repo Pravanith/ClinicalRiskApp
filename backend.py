@@ -357,13 +357,16 @@ def chatbot_response(text):
         if key in text:
             return f"**📚 GLOSSARY MATCH ({key.upper()}):**\n{value}"
 
-    # 2. Fallback to AI
+    # 2. Fallback to AI (Updated Model)
     try:
         import google.generativeai as genai
         import streamlit as st
-        api_key = st.secrets["GEMINI_API_KEY"]
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        if "GEMINI_API_KEY" in st.secrets:
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        
+        # USE STABLE MODEL
+        model = genai.GenerativeModel('gemini-flash-latest')
         
         prompt = f"""
         Define the medical term: "{text}".
@@ -372,26 +375,27 @@ def chatbot_response(text):
         """
         response = model.generate_content(prompt)
         return f"**🧠 AI DEFINITION:**\n{response.text}"
-    except:
-        return "ℹ️ Term not found in Glossary and AI is unavailable."
+    except Exception as e:
+        return f"ℹ️ Term not found. (AI Error: {str(e)})"
 
 # ==========================================
 # 6. AI CONSULTANTS (GEMINI)
 # ==========================================
 def consult_ai_doctor(role, user_input, patient_context=None):
     try:
-        # 1. Redact PII for Privacy/HIPAA Compliance
+        # 1. Redact PII
         safe_input = redact_pii(user_input)
         
-       # 2. Configure Model (FIXED)
+        # 2. Configure Model
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         else:
             return "Error: GEMINI_API_KEY not found in secrets."
 
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        # USE STABLE MODEL
+        model = genai.GenerativeModel('gemini-flash-latest')
         
-        # 3. Chain-of-Thought Prompting (Higher reliability)
+        # 3. Prompting
         if role == 'risk_assessment':
             prompt = f"""
             Role: Senior ICU Consultant.
@@ -416,9 +420,12 @@ def generate_discharge_summary(patient_data):
     import google.generativeai as genai
     import streamlit as st
     try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        if "GEMINI_API_KEY" in st.secrets:
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+            
+        # USE STABLE MODEL
+        model = genai.GenerativeModel('gemini-flash-latest')
+        
         prompt = f"Write a discharge summary for a patient with: {patient_data}"
         return model.generate_content(prompt).text
     except Exception as e:
@@ -428,9 +435,12 @@ def analyze_drug_interactions(drug_list):
     import google.generativeai as genai
     import streamlit as st
     try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        if "GEMINI_API_KEY" in st.secrets:
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+            
+        # USE STABLE MODEL
+        model = genai.GenerativeModel('gemini-flash-latest')
+        
         prompt = f"Analyze drug interactions for: {', '.join(drug_list)}. List mechanism and management."
         return model.generate_content(prompt).text
     except Exception as e:
