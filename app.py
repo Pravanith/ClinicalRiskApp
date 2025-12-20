@@ -701,97 +701,8 @@ def render_risk_calculator():
 
         st.divider()
 
-       # --- EXPLANATION SECTION (UNIFIED) ---
-        with st.expander("🧠 Clinical Logic: Why is this patient Critical?"):
-            tab1, tab2, tab3, tab4 = st.tabs(["Bleeding Risk", "AKI Risk", "Sepsis (qSOFA)", "Hemodynamics"])
-            
-            # --- TAB 1: BLEEDING ---
-            with tab1:
-                st.write("### Factors driving the Bleeding Risk Score:")
-                if res.get('inr', 0) > 3.5: 
-                    st.error(f"• **Critical INR ({res.get('inr')}):** Major driver of hemorrhage risk (+40 pts).")
-                elif res.get('inr', 0) > 1.2:
-                    st.warning(f"• **Elevated INR ({res.get('inr')}):** Contributes to risk.")
-                if res.get('anticoag'): 
-                    st.warning("• **Anticoagulant Use:** Patient is on blood thinners (+35 pts).")
-                if res.get('liver_disease'):
-                    st.error("• **Liver Disease:** Impaired clotting factors & thrombocytopenia risk.")
-                if res.get('gib_input'): 
-                     st.error("• **History of GI Bleed:** Strong predictor of recurrence.")
-                
-                # NEW: BP Check in Bleeding Tab
-                bp_cat, bp_col = get_bp_category(res.get('sys_bp', 0), res.get('dia_bp', 0))
-                if "Hypertension" in bp_cat or "Crisis" in bp_cat:
-                    st.markdown(f"• **BP Status:** :{bp_col}[**{bp_cat}**] (Increases rupture risk)")
-                
-                if res.get('age', 0) > 65: 
-                    st.info(f"• **Age ({res.get('age')}):** Geriatric fragility factor (+10 pts).")
-
-            # --- TAB 2: AKI ---
-            with tab2: 
-                st.write("### Factors driving AKI Risk:")
-                if res.get('diuretic'): st.warning("• **Diuretic Use:** +30 points")
-                if res.get('acei'): st.warning("• **ACEi/ARB Use:** +40 points")
-                
-                # NEW: Hypotension Check using Classifier
-                bp_cat, bp_col = get_bp_category(res.get('sys_bp', 0), res.get('dia_bp', 0))
-                if "Hypotension" in bp_cat:
-                    st.error(f"• **Perfusion:** :{bp_col}[**{bp_cat}**] (Pre-renal Failure risk)")
-                
-                if not (res.get('diuretic') or res.get('acei') or "Hypotension" in bp_cat):
-                    st.success("No major nephrotoxic risks identified.")
-
-            # --- TAB 3: SEPSIS (qSOFA) ---
-            with tab3: 
-                st.write("### Sepsis Assessment (qSOFA Criteria)")
-                
-                # GET CATEGORIES
-                rr_cat, rr_col = get_resp_category(res.get('resp_rate', 0))
-                temp_cat, temp_col = get_temp_category(res.get('temp_c', 0))
-                
-                st.markdown(f"**Respiration:** :{rr_col}[**{rr_cat}**] ({res.get('resp_rate')} bpm)")
-                st.markdown(f"**Temperature:** :{temp_col}[**{temp_cat}**] ({res.get('temp_c')} °C)")
-                st.divider()
-
-                sepsis_points = 0
-                if res.get('resp_rate', 0) >= 22:
-                    st.error(f"• **Respiratory Rate ({res.get('resp_rate')}):** +1 Point (Target < 22)")
-                    sepsis_points += 1
-                if res.get('sys_bp', 0) <= 100:
-                    st.error(f"• **Systolic BP ({res.get('sys_bp')}):** +1 Point (Target > 100)")
-                    sepsis_points += 1
-                if res.get('altered_mental'):
-                    st.error("• **Altered Mental Status:** +1 Point")
-                    sepsis_points += 1
-                if sepsis_points == 0: st.success("Patient meets 0 qSOFA criteria (Low Sepsis Risk).")
-
-            # --- TAB 4: HEMODYNAMICS ---
-            with tab4: 
-                st.write("### Hemodynamic Stability Checks")
-                
-                # GET CATEGORIES
-                bp_cat, bp_col = get_bp_category(res.get('sys_bp', 0), res.get('dia_bp', 0))
-                hr_cat, hr_col = get_hr_category(res.get('hr', 0))
-                gluc_cat, gluc_col = get_glucose_category(res.get('glucose', 0))
-                
-                st.markdown(f"**Blood Pressure:** :{bp_col}[**{bp_cat}**] ({res.get('sys_bp')}/{res.get('dia_bp')})")
-                st.markdown(f"**Heart Rate:** :{hr_col}[**{hr_cat}**] ({res.get('hr')} bpm)")
-                st.markdown(f"**Glucose Status:** :{gluc_col}[**{gluc_cat}**] ({res.get('glucose')} mg/dL)")
-                
-                st.divider()
-                
-                current_map = int(res.get('map_val', 0))
-                current_si = res.get('shock_index', 0)
-                st.write(f"**Mean Arterial Pressure (MAP):** {current_map} mmHg")
-                if current_map < 65: st.error("• MAP < 65 mmHg: Critical organ perfusion threat.")
-                else: st.success("• MAP > 65 mmHg: Perfusion is adequate.")
-                st.write(f"**Shock Index (HR/SBP):** {current_si:.2f}")
-                if current_si > 0.9: st.error("• Index > 0.9: High probability of shock.")
-                elif current_si > 0.7: st.warning("• Index 0.7 - 0.9: Monitor closely.")
-                else: st.success("• Index < 0.7: Hemodynamically stable.")
-                    
-       # --- CLINICAL ALERTS (HIGH SENSITIVITY MODE) ---
-        st.markdown("### ⚠️ Clinical Alerts & AI Recommendations")
+       # --- CLINICAL ALERTS & RISK ANALYSIS (MERGED SECTION) ---
+        st.markdown("### ⚠️ Clinical Alerts & Risk Analysis")
         violations = 0 
         pdf_alerts = [] # List to store alerts for PDF
         
@@ -909,6 +820,97 @@ def render_risk_calculator():
                 st.warning("⚠️ **Missing Vitals:** Demographics recorded, but Vital Signs (BP, HR, SpO2) are required to determine stability.")
             else:
                 st.success("✅ **Patient Stable:** No immediate life-threatening protocol violations detected.")
+        
+        st.divider()
+        st.markdown("#### 🔍 Risk Factor Breakdown")
+        
+        # --- TABBED ANALYSIS MOVED HERE ---
+        tab1, tab2, tab3, tab4 = st.tabs(["Bleeding Risk", "AKI Risk", "Sepsis (qSOFA)", "Hemodynamics"])
+        
+        # --- TAB 1: BLEEDING ---
+        with tab1:
+            st.write("### Factors driving the Bleeding Risk Score:")
+            if res.get('inr', 0) > 3.5: 
+                st.error(f"• **Critical INR ({res.get('inr')}):** Major driver of hemorrhage risk (+40 pts).")
+            elif res.get('inr', 0) > 1.2:
+                st.warning(f"• **Elevated INR ({res.get('inr')}):** Contributes to risk.")
+            if res.get('anticoag'): 
+                st.warning("• **Anticoagulant Use:** Patient is on blood thinners (+35 pts).")
+            if res.get('liver_disease'):
+                st.error("• **Liver Disease:** Impaired clotting factors & thrombocytopenia risk.")
+            if res.get('gib_input'): 
+                    st.error("• **History of GI Bleed:** Strong predictor of recurrence.")
+            
+            # NEW: BP Check in Bleeding Tab
+            bp_cat, bp_col = get_bp_category(res.get('sys_bp', 0), res.get('dia_bp', 0))
+            if "Hypertension" in bp_cat or "Crisis" in bp_cat:
+                st.markdown(f"• **BP Status:** :{bp_col}[**{bp_cat}**] (Increases rupture risk)")
+            
+            if res.get('age', 0) > 65: 
+                st.info(f"• **Age ({res.get('age')}):** Geriatric fragility factor (+10 pts).")
+
+        # --- TAB 2: AKI ---
+        with tab2: 
+            st.write("### Factors driving AKI Risk:")
+            if res.get('diuretic'): st.warning("• **Diuretic Use:** +30 points")
+            if res.get('acei'): st.warning("• **ACEi/ARB Use:** +40 points")
+            
+            # NEW: Hypotension Check using Classifier
+            bp_cat, bp_col = get_bp_category(res.get('sys_bp', 0), res.get('dia_bp', 0))
+            if "Hypotension" in bp_cat:
+                st.error(f"• **Perfusion:** :{bp_col}[**{bp_cat}**] (Pre-renal Failure risk)")
+            
+            if not (res.get('diuretic') or res.get('acei') or "Hypotension" in bp_cat):
+                st.success("No major nephrotoxic risks identified.")
+
+        # --- TAB 3: SEPSIS (qSOFA) ---
+        with tab3: 
+            st.write("### Sepsis Assessment (qSOFA Criteria)")
+            
+            # GET CATEGORIES
+            rr_cat, rr_col = get_resp_category(res.get('resp_rate', 0))
+            temp_cat, temp_col = get_temp_category(res.get('temp_c', 0))
+            
+            st.markdown(f"**Respiration:** :{rr_col}[**{rr_cat}**] ({res.get('resp_rate')} bpm)")
+            st.markdown(f"**Temperature:** :{temp_col}[**{temp_cat}**] ({res.get('temp_c')} °C)")
+            st.divider()
+
+            sepsis_points = 0
+            if res.get('resp_rate', 0) >= 22:
+                st.error(f"• **Respiratory Rate ({res.get('resp_rate')}):** +1 Point (Target < 22)")
+                sepsis_points += 1
+            if res.get('sys_bp', 0) <= 100:
+                st.error(f"• **Systolic BP ({res.get('sys_bp')}):** +1 Point (Target > 100)")
+                sepsis_points += 1
+            if res.get('altered_mental'):
+                st.error("• **Altered Mental Status:** +1 Point")
+                sepsis_points += 1
+            if sepsis_points == 0: st.success("Patient meets 0 qSOFA criteria (Low Sepsis Risk).")
+
+        # --- TAB 4: HEMODYNAMICS ---
+        with tab4: 
+            st.write("### Hemodynamic Stability Checks")
+            
+            # GET CATEGORIES
+            bp_cat, bp_col = get_bp_category(res.get('sys_bp', 0), res.get('dia_bp', 0))
+            hr_cat, hr_col = get_hr_category(res.get('hr', 0))
+            gluc_cat, gluc_col = get_glucose_category(res.get('glucose', 0))
+            
+            st.markdown(f"**Blood Pressure:** :{bp_col}[**{bp_cat}**] ({res.get('sys_bp')}/{res.get('dia_bp')})")
+            st.markdown(f"**Heart Rate:** :{hr_col}[**{hr_cat}**] ({res.get('hr')} bpm)")
+            st.markdown(f"**Glucose Status:** :{gluc_col}[**{gluc_cat}**] ({res.get('glucose')} mg/dL)")
+            
+            st.divider()
+            
+            current_map = int(res.get('map_val', 0))
+            current_si = res.get('shock_index', 0)
+            st.write(f"**Mean Arterial Pressure (MAP):** {current_map} mmHg")
+            if current_map < 65: st.error("• MAP < 65 mmHg: Critical organ perfusion threat.")
+            else: st.success("• MAP > 65 mmHg: Perfusion is adequate.")
+            st.write(f"**Shock Index (HR/SBP):** {current_si:.2f}")
+            if current_si > 0.9: st.error("• Index > 0.9: High probability of shock.")
+            elif current_si > 0.7: st.warning("• Index 0.7 - 0.9: Monitor closely.")
+            else: st.success("• Index < 0.7: Hemodynamically stable.")
         
         st.divider()
         
