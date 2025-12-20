@@ -63,15 +63,18 @@ try:
 except Exception as e:
     st.error(f"⚠️ AI Configuration Error: {e}")
 
-# --- 1. AI Extraction Function (Updated) ---
+# --- 1. AI Extraction Function (Updated for Your Available Models) ---
 def extract_data_from_soap(note_text):
     """
     Uses Gemini to extract structured clinical data.
     """
-    # USE STABLE 1.5 MODELS ONLY
+    # Prioritize the "Flash" models from your list for speed
     candidate_models = [
-        'gemini-1.5-flash',
-        'gemini-1.5-pro'
+        'gemini-2.0-flash',          # Best balance of speed/intelligence
+        'gemini-2.0-flash-001',      # Specific stable version
+        'gemini-2.0-flash-lite',     # Extremely fast backup
+        'gemini-exp-1206',           # High-performance experimental
+        'gemini-2.5-flash-preview-09-2025' # Future preview fallback
     ]
 
     prompt = f"""
