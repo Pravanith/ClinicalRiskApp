@@ -7,22 +7,27 @@ import random
 import datetime
 import json
 import google.generativeai as genai
+from fpdf import FPDF
+import base64
 
-# --- CLINICAL GUIDELINE CLASSIFIERS (AHA, ADA, SEPSIS-3) ---
+# ==========================================
+# 1. CLINICAL GUIDELINE CLASSIFIERS (2025 STANDARDS)
+# ==========================================
 
 def get_bp_category(sbp, dbp):
     """Source: 2025 ACC/AHA High Blood Pressure Guidelines"""
-    if sbp < 90 or dbp < 60: return "Hypotension (Shock Risk)", "red" # Added Shock
+    if sbp < 90 or dbp < 60: return "Hypotension (Shock Risk)", "red" 
     elif sbp < 120 and dbp < 80: return "Normal", "green"
     elif 120 <= sbp <= 129 and dbp < 80: return "Elevated", "orange"
     elif (130 <= sbp <= 139) or (80 <= dbp <= 89): return "Stage 1 Hypertension", "orange"
-    elif sbp >= 180 or dbp >= 120: return "Severe Hypertension", "red" # Updated 2025 Terminology
+    elif sbp >= 180 or dbp >= 120: return "Severe Hypertension", "red" 
     elif sbp >= 140 or dbp >= 90: return "Stage 2 Hypertension", "red"
     return "Unclassified", "gray"
 
 def get_glucose_category(glucose):
-    """Source: American Diabetes Association (ADA) Standards of Care"""
-    if glucose < 70: return "Hypoglycemia (Level 1)", "red"
+    """Source: 2025 ADA Standards of Care"""
+    if glucose < 54: return "Hypoglycemia (Level 2 - Critical)", "red" 
+    elif glucose < 70: return "Hypoglycemia (Level 1)", "orange"      
     elif 70 <= glucose <= 99: return "Normal Fasting", "green"
     elif 100 <= glucose <= 125: return "Prediabetes", "orange"
     elif glucose > 180: return "Hyperglycemia (Inpatient Alert)", "red"
@@ -31,67 +36,59 @@ def get_glucose_category(glucose):
 
 def get_hr_category(hr):
     """Source: AHA / ACLS Bradycardia & Tachycardia Algorithms"""
-    if hr < 60: return "Bradycardia", "orange"
-    elif 60 <= hr <= 100: return "Normal Sinus", "green"
-    elif hr > 100: return "Tachycardia", "red"
+    if hr < 50: return "Bradycardia (Significant)", "orange"
+    elif 50 <= hr <= 100: return "Normal Sinus", "green"
+    elif hr > 130: return "Tachycardia (Critical)", "red"
+    elif hr > 100: return "Tachycardia", "orange"
     return "Normal", "green"
 
 def get_resp_category(rr):
-    """Source: Sepsis-3 (qSOFA) & Normal Ranges"""
-    if rr < 12: return "Bradypnea", "orange"
+    """Source: Sepsis-3 & SIRS Criteria"""
+    if rr < 8: return "Bradypnea (Critical)", "red"
+    elif rr < 12: return "Bradypnea", "orange"
     elif 12 <= rr <= 20: return "Normal", "green"
-    elif rr >= 22: return "Tachypnea (qSOFA Critical)", "red"
-    elif rr > 20: return "Tachypnea", "orange"
+    elif rr > 30: return "Tachypnea (Critical)", "red"
+    elif rr > 20: return "Tachypnea (SIRS Criteria)", "orange"
     return "Normal", "green"
 
-def get_temp_category(temp_c):
-    """Source: CDC / Infectious Disease Definitions"""
-    if temp_c < 35.0: return "Hypothermia", "red"
-    elif 36.1 <= temp_c <= 37.2: return "Normal", "green"
-    elif temp_c >= 38.0: return "Fever (Febrile)", "red"
-    elif temp_c > 37.2: return "Low-Grade Fever", "orange"
+def get_temp_category(temp_f):
+    """Source: SIRS Criteria (Fahrenheit)"""
+    if temp_f < 96.8: return "Hypothermia (SIRS)", "orange"
+    elif 96.8 <= temp_f <= 100.4: return "Normal", "green"
+    elif temp_f > 100.4: return "Fever (SIRS)", "orange"
     return "Normal", "green"
 
 # --- CONFIGURATION: CONNECT TO AI ---
 try:
-    # This checks if the key exists in the cloud vault
     if "GEMINI_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     else:
-        # Fallback for local testing (optional, usually safer to use secrets.toml locally too)
         st.warning("⚠️ AI Key missing. Please add GEMINI_API_KEY to Streamlit Secrets.")
 except Exception as e:
     st.error(f"⚠️ AI Configuration Error: {e}")
 
-# --- 1. AI Extraction Function (Updated for Your Available Models) ---
-def extract_data_from_soap(note_text):
-    """
-    Uses Gemini to extract structured clinical data.
-    """
-    # Prioritize the "Flash" models from your list for speed
-    candidate_models = [
-        'gemini-flash-latest'
-    ]
+# ==========================================
+# 2. AI EXTRACTION & REPORTING
+# ==========================================
 
+def extract_data_from_soap(note_text):
+    candidate_models = ['gemini-flash-latest']
     prompt = f"""
     You are a clinical data extraction assistant. Extract the following values from the note.
     Return ONLY a valid JSON object. Do not add markdown formatting.
     If a value is not mentioned, return null.
     
     Keys to extract:
-    # --- VITALS ---
+    - name (string, extract patient name if available)
     - age (integer)
-    - gender (string: "Male" or "Female")
-    - weight_kg (float)
-    - height_cm (integer)
-    - sbp (systolic bp, integer)
-    - dbp (diastolic bp, integer)
-    - hr (heart rate, integer)
-    - rr (respiratory rate, integer)
-    - temp_c (temperature in celsius, float)
+    - gender (string)
+    - weight_lbs (float. If note is in kg, convert to lbs: kg * 2.20462)
+    - sbp (integer)
+    - dbp (integer)
+    - hr (integer)
+    - rr (integer)
+    - temp_f (float. If note is in Celsius, convert to Fahrenheit)
     - o2_sat (integer)
-    
-    # --- LABS ---
     - creatinine (float)
     - bun (integer)
     - potassium (float)
@@ -101,25 +98,20 @@ def extract_data_from_soap(note_text):
     - platelets (integer)
     - inr (float)
     - lactate (float)
-    
-    # --- HISTORY / MEDS (Booleans) ---
-    - anticoagulant_use (boolean: true if taking warfarin, eliquis, xarelto, heparin, etc.)
-    - liver_disease (boolean: cirrhosis, hepatitis, etc.)
-    - heart_failure (boolean: CHF, low EF)
-    - gi_bleed (boolean: history of gastrointestinal bleeding)
-    - nsaid_use (boolean: ibuprofen, motrin, naproxen, etc.)
+    - anticoagulant_use (boolean)
+    - liver_disease (boolean)
+    - heart_failure (boolean)
+    - gi_bleed (boolean)
+    - nsaid_use (boolean)
     - active_chemo (boolean)
-    - diuretic_use (boolean: lasix, furosemide, hctz)
-    - acei_arb_use (boolean: lisinopril, losartan, etc.)
+    - diuretic_use (boolean)
+    - acei_arb_use (boolean)
     - insulin_use (boolean)
-    - uncontrolled_diabetes (boolean: high A1c mentioned)
-    - altered_mental (boolean: confusion, lethargy, AMS)
+    - uncontrolled_diabetes (boolean)
+    - altered_mental (boolean)
 
-    Clinical Note:
-    "{note_text}"
+    Clinical Note: "{note_text}"
     """
-
-    last_error = None
     for model_name in candidate_models:
         try:
             model = genai.GenerativeModel(model_name)
@@ -127,952 +119,422 @@ def extract_data_from_soap(note_text):
             cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
             return json.loads(cleaned_text)
         except Exception as e:
-            last_error = e
             continue
-
-    st.error(f"❌ Extraction failed. Last error: {last_error}")
+    st.error("❌ Extraction failed.")
     return None
-
-from fpdf import FPDF
-import base64
 
 def create_pdf_report(res, ai_assessment, alerts_list):
     pdf = FPDF()
     pdf.add_page()
     
-    # --- HELPER: Emoji Sanitizer ---
     def clean_text(text):
         if not isinstance(text, str): return str(text)
-        text = text.replace("🚨", "[CRITICAL] ")
-        text = text.replace("⚠️", "[WARNING] ")
-        text = text.replace("👉", "") # Remove arrow for cleaner "Plan" list
-        text = text.replace("✅", "[OK] ")
-        text = text.replace("⚡", "")
-        text = text.replace("🩸", "")
-        # Force encode to Latin-1
+        text = text.replace("🚨", "[CRITICAL] ").replace("⚠️", "[WARNING] ")
+        text = text.replace("👉", "").replace("✅", "[OK] ")
         return text.encode('latin-1', 'replace').decode('latin-1')
 
-    # --- HEADER ---
+    # Header
     pdf.set_font("Arial", 'B', 16)
     pdf.cell(0, 10, txt="Clinical Risk Monitor - Acute SOAP Note", ln=1, align='C')
-    pdf.set_font("Arial", 'I', 10)
-    pdf.cell(0, 10, txt="Automated Clinical Decision Support System (CDSS)", ln=1, align='C')
-    pdf.line(10, 30, 200, 30)
-    pdf.ln(10)
+    pdf.line(10, 30, 200, 30); pdf.ln(10)
 
-    # ==============================
-    # 1. SUBJECTIVE (Patient Profile)
-    # ==============================
+    # Subjective
     pdf.set_font("Arial", 'B', 12)
     pdf.set_fill_color(230, 230, 230)
-    pdf.cell(0, 8, txt="SUBJECTIVE", ln=1, fill=True)
-    pdf.ln(2)
-    
+    pdf.cell(0, 8, txt="SUBJECTIVE", ln=1, fill=True); pdf.ln(2)
     pdf.set_font("Arial", size=11)
-    # Demographics Line
-    demo_txt = clean_text(f"Patient: {res.get('age')} year old {res.get('gender')} | Weight: {res.get('weight_kg', res.get('weight_input', 'N/A'))} kg")
-    pdf.cell(0, 6, txt=demo_txt, ln=1)
     
-    # History Line (If available in AI assessment, otherwise generic)
+    weight_val = res.get('weight_kg', 0) * 2.20462 if res.get('weight_kg') else 0
+    # Include Name in PDF
+    patient_info = f"Name: {res.get('name', 'Unknown')} | Age: {res.get('age')} | Gender: {res.get('gender')}"
+    pdf.cell(0, 6, txt=clean_text(patient_info), ln=1)
+    pdf.cell(0, 6, txt=f"Weight: {weight_val:.1f} lbs", ln=1)
+    
     if ai_assessment:
-        pdf.ln(2)
-        pdf.set_font("Arial", 'I', 10)
-        pdf.multi_cell(0, 5, txt=clean_text(f"Case Context: {ai_assessment[:300]}...")) # Preview of AI Analysis
+        pdf.ln(2); pdf.set_font("Arial", 'I', 10)
+        pdf.multi_cell(0, 5, txt=clean_text(f"AI Assessment: {ai_assessment[:500]}..."))
     pdf.ln(5)
 
-    # ==============================
-    # 2. OBJECTIVE (Vitals & Labs)
-    # ==============================
+    # Objective
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 8, txt="OBJECTIVE", ln=1, fill=True)
-    pdf.ln(2)
+    pdf.cell(0, 8, txt="OBJECTIVE", ln=1, fill=True); pdf.ln(2)
     
-    # --- Calculated Categories ---
     bp_cat, _ = get_bp_category(res.get('sys_bp', 0), res.get('dia_bp', 0))
-    hr_cat, _ = get_hr_category(res.get('hr', 0))
-    rr_cat, _ = get_resp_category(res.get('resp_rate', 0))
-    gluc_cat, _ = get_glucose_category(res.get('glucose', 0))
-
-    # --- Vitals Grid ---
+    
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(45, 6, txt="Blood Pressure:", align='R'); pdf.set_font("Arial", size=10)
     pdf.cell(50, 6, txt=clean_text(f"{res.get('sys_bp')}/{res.get('dia_bp')} ({bp_cat})"), ln=0)
-    
     pdf.set_font("Arial", 'B', 10)
-    pdf.cell(40, 6, txt="Heart Rate:", align='R'); pdf.set_font("Arial", size=10)
-    pdf.cell(50, 6, txt=clean_text(f"{res.get('hr')} bpm ({hr_cat})"), ln=1)
-
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(45, 6, txt="Resp. Rate:", align='R'); pdf.set_font("Arial", size=10)
-    pdf.cell(50, 6, txt=clean_text(f"{res.get('resp_rate')} /min ({rr_cat})"), ln=0)
-
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(40, 6, txt="SpO2:", align='R'); pdf.set_font("Arial", size=10)
-    pdf.cell(50, 6, txt=f"{res.get('o2_sat')}%", ln=1)
-
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(45, 6, txt="Temperature:", align='R'); pdf.set_font("Arial", size=10)
-    pdf.cell(50, 6, txt=f"{res.get('temp_c')} C", ln=1)
-    
-    pdf.ln(4)
-    
-    # --- Critical Labs ---
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(45, 6, txt="Glucose:", align='R'); pdf.set_font("Arial", size=10)
-    pdf.cell(50, 6, txt=clean_text(f"{res.get('glucose')} mg/dL ({gluc_cat})"), ln=0)
-
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(40, 6, txt="Lactate:", align='R'); pdf.set_font("Arial", size=10)
-    pdf.cell(50, 6, txt=f"{res.get('lactate')} mmol/L", ln=1)
-    
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(45, 6, txt="INR:", align='R'); pdf.set_font("Arial", size=10)
-    pdf.cell(50, 6, txt=f"{res.get('inr')}", ln=0)
-
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(40, 6, txt="Creatinine:", align='R'); pdf.set_font("Arial", size=10)
-    pdf.cell(50, 6, txt=f"{res.get('creatinine')}", ln=1)
+    pdf.cell(45, 6, txt="Temp:", align='R'); pdf.set_font("Arial", size=10)
+    pdf.cell(50, 6, txt=f"{res.get('temp_f')} F", ln=1)
     pdf.ln(5)
 
-    # ==============================
-    # 3. ASSESSMENT (Diagnosis & Risk)
-    # ==============================
+    # Alerts
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 8, txt="ASSESSMENT", ln=1, fill=True)
-    pdf.ln(2)
-
-    # Risk Scores
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(0, 6, txt="Risk Stratification Models:", ln=1)
+    pdf.cell(0, 8, txt="ASSESSMENT & ALERTS", ln=1, fill=True); pdf.ln(2)
     pdf.set_font("Arial", size=10)
-    pdf.cell(90, 6, txt=f"- Bleeding Risk (HAS-BLED equiv): {res.get('bleeding_risk'):.1f}%")
-    pdf.cell(90, 6, txt=f"- Sepsis Score (qSOFA): {res.get('sepsis_risk')}", ln=1)
-    pdf.cell(90, 6, txt=f"- AKI Risk Score: {res.get('aki_risk')}%")
-    pdf.cell(90, 6, txt=f"- Shock Index: {res.get('shock_index'):.2f}", ln=1)
-    pdf.ln(4)
-
-    # Problem List (From "Red/Orange" Alerts)
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(0, 6, txt="Active Clinical Problems:", ln=1)
-    pdf.set_font("Arial", size=10)
-    
-    # Filter: Get only alerts that are NOT protocols (don't start with 👉)
-    problems = [a for a in alerts_list if "Protocol" not in a and "👉" not in a]
-    
+    problems = [a for a in alerts_list if "Protocol" not in a]
     if problems:
-        pdf.set_text_color(200, 0, 0) # Dark Red
-        for p in problems:
-            pdf.cell(0, 6, txt=f"  - {clean_text(p)}", ln=1)
+        pdf.set_text_color(200, 0, 0)
+        for p in problems: pdf.cell(0, 6, txt=f"  - {clean_text(p)}", ln=1)
     else:
-        pdf.set_text_color(0, 100, 0) # Green
+        pdf.set_text_color(0, 100, 0)
         pdf.cell(0, 6, txt="  - No acute instability detected.", ln=1)
-    
-    pdf.set_text_color(0, 0, 0) # Reset color
-    pdf.ln(5)
+    pdf.set_text_color(0, 0, 0); pdf.ln(5)
 
-    # ==============================
-    # 4. PLAN (Protocols)
-    # ==============================
+    # Plan
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 8, txt="PLAN / INTERVENTIONS", ln=1, fill=True)
-    pdf.ln(2)
-    
+    pdf.cell(0, 8, txt="PLAN", ln=1, fill=True); pdf.ln(2)
     pdf.set_font("Arial", size=10)
-    
-    # Filter: Get only PROTOCOLS (start with 👉)
     protocols = [a for a in alerts_list if "Protocol" in a or "👉" in a]
-    
     if protocols:
-        for prot in protocols:
-            # Clean text removes the '👉' so we add a bullet point
-            pdf.multi_cell(0, 6, txt=f"[ ] {clean_text(prot)}")
-            pdf.ln(1)
+        for prot in protocols: pdf.multi_cell(0, 6, txt=f"[ ] {clean_text(prot)}"); pdf.ln(1)
     else:
         pdf.cell(0, 6, txt="[ ] Continue standard monitoring.", ln=1)
-        pdf.cell(0, 6, txt="[ ] Re-evaluate vitals in 4 hours.", ln=1)
 
     return pdf.output(dest='S').encode('latin-1', 'replace')
-# ---------------------------------------------------------
-# 1. PAGE CONFIGURATION
-# ---------------------------------------------------------
-st.set_page_config(
-    page_title="Clinical Risk Monitor", 
-    page_icon="🛡️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
-# Load CSS (Called immediately after page config)
-st.markdown("""
-    <style>
-    [data-testid="stSidebar"] {
-        background-color: #f8f9fa;
-        border-right: 1px solid #e9ecef;
-    }
-    [data-testid="stMetricValue"] {
-        font-size: 1.8rem !important;
-        color: #212529;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# ==========================================
+# 3. PAGE CONFIGURATION
+# ==========================================
+st.set_page_config(page_title="Clinical Risk Monitor", page_icon="🛡️", layout="wide", initial_sidebar_state="expanded")
+st.markdown("""<style>[data-testid="stSidebar"] {background-color: #f8f9fa; border-right: 1px solid #e9ecef;} [data-testid="stMetricValue"] {font-size: 1.8rem !important; color: #212529;}</style>""", unsafe_allow_html=True)
 
-# --- HEADER SECTION MODIFIED (CLEAN TITLE) ---
 st.title("🏥 Clinical Risk Monitor")
 st.divider()
 
-# Helper for file timestamps
-def get_timestamp():
-    return datetime.datetime.now().strftime("%Y%m%d_%H%M")
-
-# Initialize Database
+def get_timestamp(): return datetime.datetime.now().strftime("%Y%m%d_%H%M")
 bk.init_db()
+try: bleeding_model = bk.load_bleeding_model()
+except Exception as e: st.error(f"Model failed to load: {e}"); st.stop()
 
-# Load AI Model
-try:
-    bleeding_model = bk.load_bleeding_model()
-except Exception as e:
-    st.error(f"Model failed to load: {e}")
-    st.stop()
+if 'patient_data' not in st.session_state: st.session_state['patient_data'] = {}
+if 'entered_app' not in st.session_state: st.session_state['entered_app'] = False
 
-# Session State Initialization
-if 'patient_data' not in st.session_state:
-    st.session_state['patient_data'] = {}
-if 'entered_app' not in st.session_state:
-    st.session_state['entered_app'] = False
+# ==========================================
+# 4. UI MODULES
+# ==========================================
 
-# ---------------------------------------------------------
-# 2. UI MODULES
-# ---------------------------------------------------------
-
-# --- COVER PAGE ---
 def render_cover_page():
     st.markdown("<h1 style='text-align: center;'>🛡️ Clinical Risk Monitor</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center;'>AI-Driven Pharmacovigilance System</p>", unsafe_allow_html=True)
     st.write("")
     c1, c2, c3 = st.columns([1, 2, 1])
     if c2.button("🚀 Launch Dashboard", use_container_width=True, type="primary"):
-        st.session_state['entered_app'] = True
-        st.rerun()
+        st.session_state['entered_app'] = True; st.rerun()
 
-# --- MODULE 1: RISK CALCULATOR (COMPLETE & FIXED) ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator")
-    # --- 1. INITIALIZE DEFAULTS (Prevents "KeyError" crashes) ---
     defaults = {
-        # Demographics & Vitals
-        'age_input': 0, 'gender_input': "Male", 
-        'weight_input': 0.0, 'w_unit': 'kg', 'height_input': 0,
-        'sbp_input': 0, 'dbp_input': 0, 'hr_input': 0, 'rr_input': 0, 
-        'temp_input': 0.0, 'o2_input': 0,
-        
-        # Labs
-        'creat_input': 0.0, 'bun_input': 0, 
-        'k_input': 0.0, 'glc_input': 0, 
-        'wbc_input': 0.0, 'hgb_input': 0.0, 
-        'plt_input': 0, 'inr_input': 0.0, 'lac_input': 0.0,
-        
-        # History (Checkboxes)
-        'anticoag_input': False, 'liver_input': False,
-        'chf_input': False, 'gib_input': False,
-        'nsaid_input': False, 'chemo_input': False,
-        'diuretic_input': False, 'acei_input': False,
-        'insulin_input': False, 'dm_input': False, 'ams_input': False
+        'name_input': "", 'age_input': 0, 'gender_input': "Male", 'weight_input': 0.0, 'height_input': 0,
+        'sbp_input': 0, 'dbp_input': 0, 'hr_input': 0, 'rr_input': 0, 'temp_input': 0.0, 'o2_input': 0,
+        'creat_input': 0.0, 'bun_input': 0, 'k_input': 0.0, 'glc_input': 0, 'wbc_input': 0.0, 'hgb_input': 0.0,
+        'plt_input': 0, 'inr_input': 0.0, 'lac_input': 0.0, 'anticoag_input': False, 'liver_input': False,
+        'chf_input': False, 'gib_input': False, 'nsaid_input': False, 'chemo_input': False,
+        'diuretic_input': False, 'acei_input': False, 'insulin_input': False, 'dm_input': False, 'ams_input': False
     }
-    
     for key, default_val in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = default_val
+        if key not in st.session_state: st.session_state[key] = default_val
 
-    # --- 2. AI AUTO-FILL SECTION ---
     with st.expander("⚡ AI Auto-Fill (Paste SOAP Note)"):
-        st.caption("Paste a clinical note below to auto-populate vitals, labs, and history.")
-        soap_note = st.text_area("Clinical Note", placeholder="Example: 68yo male, BP 150/90, HR 110, Cr 1.5, Lactate 4.0, hx of CHF...")
-        
-        if st.button("✨ Extract Data from Note"):
-            if soap_note:
-                with st.spinner("Gemini is extracting clinical data..."):
-                    data = extract_data_from_soap(soap_note)
-                    
-                    if data:
-                        # --- MAP AI DATA TO WIDGET KEYS ---
-                        
-                        # Vitals
-                        if data.get('age'): st.session_state['age_input'] = int(data['age'])
-                        if data.get('gender'): st.session_state['gender_input'] = data['gender']
-                        if data.get('weight_kg'): 
-                            st.session_state['weight_input'] = float(data['weight_kg'])
-                            st.session_state['w_unit'] = 'kg'
-                        if data.get('height_cm'): st.session_state['height_input'] = int(data['height_cm'])
-                        if data.get('sbp'): st.session_state['sbp_input'] = int(data['sbp'])
-                        if data.get('dbp'): st.session_state['dbp_input'] = int(data['dbp'])
-                        if data.get('hr'): st.session_state['hr_input'] = int(data['hr'])
-                        if data.get('rr'): st.session_state['rr_input'] = int(data['rr'])
-                        if data.get('temp_c'): st.session_state['temp_input'] = float(data['temp_c'])
-                        if data.get('o2_sat'): st.session_state['o2_input'] = int(data['o2_sat'])
-                        
-                        # Labs
-                        if data.get('creatinine'): st.session_state['creat_input'] = float(data['creatinine'])
-                        if data.get('bun'): st.session_state['bun_input'] = int(data['bun'])
-                        if data.get('potassium'): st.session_state['k_input'] = float(data['potassium'])
-                        if data.get('glucose'): st.session_state['glc_input'] = int(data['glucose'])
-                        if data.get('wbc'): st.session_state['wbc_input'] = float(data['wbc'])
-                        if data.get('hgb'): st.session_state['hgb_input'] = float(data['hgb'])
-                        if data.get('platelets'): st.session_state['plt_input'] = int(data['platelets'])
-                        if data.get('inr'): st.session_state['inr_input'] = float(data['inr'])
-                        if data.get('lactate'): st.session_state['lac_input'] = float(data['lactate'])
-                        
-                        # History (Booleans)
-                        if data.get('anticoagulant_use') is not None: st.session_state['anticoag_input'] = bool(data['anticoagulant_use'])
-                        if data.get('liver_disease') is not None: st.session_state['liver_input'] = bool(data['liver_disease'])
-                        if data.get('heart_failure') is not None: st.session_state['chf_input'] = bool(data['heart_failure'])
-                        if data.get('gi_bleed') is not None: st.session_state['gib_input'] = bool(data['gi_bleed'])
-                        if data.get('nsaid_use') is not None: st.session_state['nsaid_input'] = bool(data['nsaid_use'])
-                        if data.get('active_chemo') is not None: st.session_state['chemo_input'] = bool(data['active_chemo'])
-                        if data.get('diuretic_use') is not None: st.session_state['diuretic_input'] = bool(data['diuretic_use'])
-                        if data.get('acei_arb_use') is not None: st.session_state['acei_input'] = bool(data['acei_arb_use'])
-                        if data.get('insulin_use') is not None: st.session_state['insulin_input'] = bool(data['insulin_use'])
-                        if data.get('uncontrolled_diabetes') is not None: st.session_state['dm_input'] = bool(data['uncontrolled_diabetes'])
-                        if data.get('altered_mental') is not None: st.session_state['ams_input'] = bool(data['altered_mental'])
-                        
-                        st.success("✅ Data Extracted! Form updated below.")
-                        st.rerun() 
-            else:
-                st.warning("Please paste a note first.")
+        st.caption("Paste a clinical note to auto-populate.")
+        soap_note = st.text_area("Clinical Note")
+        if st.button("✨ Extract Data") and soap_note:
+            with st.spinner("Extracting..."):
+                data = extract_data_from_soap(soap_note)
+                if data:
+                    if data.get('name'): st.session_state['name_input'] = data['name']
+                    if data.get('age'): st.session_state['age_input'] = int(data['age'])
+                    if data.get('gender'): st.session_state['gender_input'] = data['gender']
+                    if data.get('weight_lbs'): st.session_state['weight_input'] = float(data['weight_lbs'])
+                    if data.get('sbp'): st.session_state['sbp_input'] = int(data['sbp'])
+                    if data.get('dbp'): st.session_state['dbp_input'] = int(data['dbp'])
+                    if data.get('hr'): st.session_state['hr_input'] = int(data['hr'])
+                    if data.get('rr'): st.session_state['rr_input'] = int(data['rr'])
+                    if data.get('temp_f'): st.session_state['temp_input'] = float(data['temp_f'])
+                    if data.get('o2_sat'): st.session_state['o2_input'] = int(data['o2_sat'])
+                    if data.get('glucose'): st.session_state['glc_input'] = int(data['glucose'])
+                    if data.get('wbc'): st.session_state['wbc_input'] = float(data['wbc'])
+                    if data.get('lactate'): st.session_state['lac_input'] = float(data['lactate'])
+                    if data.get('creatinine'): st.session_state['creat_input'] = float(data['creatinine'])
+                    st.success("✅ Extracted!"); st.rerun()
 
-    # --- 3. INPUTS CONTAINER ---
     with st.container(border=True):
         st.markdown("#### 📝 Patient Data Entry")
-        
         with st.form("risk_form"):
-            col_left, col_right = st.columns([1, 1], gap="medium")
+            # --- NAME INPUT ADDED ---
+            name = st.text_input("Patient Name / ID", key='name_input')
             
-            # --- LEFT COLUMN: Demographics & Vitals ---
+            col_left, col_right = st.columns([1, 1], gap="medium")
             with col_left:
-                st.markdown("##### 👤 Patient Profile")
+                st.markdown("##### 👤 Profile & Vitals")
                 l1, l2 = st.columns(2)
-                age = l1.number_input("Age (Years)", min_value=0, max_value=120, key='age_input')
+                age = l1.number_input("Age", min_value=0, max_value=120, key='age_input')
                 gender = l2.selectbox("Gender", ["Male", "Female"], key='gender_input')
                 
-                w_val, w_unit = st.columns([2, 1]) 
-                weight_input = w_val.number_input("Weight", 0.0, 400.0, key='weight_input')
-                weight_scale = w_unit.selectbox("Unit", ["kg", "lbs"], key="w_unit")
-                height = st.number_input("Height (cm)", 0, 250, key='height_input')
-                
-                # Weight Logic
-                weight_kg = weight_input * 0.453592 if weight_scale == "lbs" else weight_input
-                if height > 0:
-                    bmi = weight_kg / ((height/100)**2)
-                else:
-                    bmi = 0.0
+                weight_lbs = st.number_input("Weight (lbs)", 0.0, 500.0, key='weight_input')
+                weight_kg = weight_lbs * 0.453592 
 
-                st.markdown("##### 🩺 Vitals")
                 v1, v2 = st.columns(2)
-                sys_bp = v1.number_input("Systolic BP (Normal: 110-120)", 0, 300, key='sbp_input')
-                dia_bp = v2.number_input("Diastolic BP (Normal: 70-80)", 0, 200, key='dbp_input')
-                
+                sys_bp = v1.number_input("Systolic BP", 0, 300, key='sbp_input')
+                dia_bp = v2.number_input("Diastolic BP", 0, 200, key='dbp_input')
                 v3, v4 = st.columns(2)
-                hr = v3.number_input("Heart Rate (Normal: 60-100)", 0, 300, key='hr_input')
-                resp_rate = v4.number_input("Resp Rate (Normal: 12-20)", 0, 60, key='rr_input')
-                
+                hr = v3.number_input("Heart Rate", 0, 300, key='hr_input')
+                resp_rate = v4.number_input("Resp Rate", 0, 60, key='rr_input')
                 v5, v6 = st.columns(2)
-                temp_c = v5.number_input("Temp °C (Normal: 36.5-37.5)", 0.0, 45.0, step=0.1, key='temp_input')
-                o2_sat = v6.number_input("O2 Sat % (Normal: >95%)", 0, 100, key='o2_input')
+                temp_f = v5.number_input("Temp °F", 0.0, 115.0, step=0.1, key='temp_input')
+                o2_sat = v6.number_input("O2 Sat %", 0, 100, key='o2_input')
 
-            # --- RIGHT COLUMN: Labs & History ---
             with col_right:
-                st.markdown("##### 🧪 Critical Labs")
+                st.markdown("##### 🧪 Labs & History")
                 lab1, lab2 = st.columns(2)
-                creat = lab1.number_input("Creatinine (0.6-1.2 mg/dL)", key='creat_input')
-                bun = lab2.number_input("Blood Urea Nitrogen (7-20)", key='bun_input')
-                
+                creat = lab1.number_input("Creatinine", key='creat_input')
+                bun = lab2.number_input("BUN", key='bun_input')
                 lab3, lab4 = st.columns(2)
-                potassium = lab3.number_input("Potassium (3.5-5.0 mmol/L)", key='k_input')
-                glucose = lab4.number_input("Glucose (70-100 mg/dL)", key='glc_input')
-                
+                potassium = lab3.number_input("Potassium", key='k_input')
+                glucose = lab4.number_input("Glucose", key='glc_input')
                 lab5, lab6 = st.columns(2)
-                wbc = lab5.number_input("WBC (4.5-11.0 10^9/L)", key='wbc_input')
-                hgb = lab6.number_input("Hemoglobin (13.5-17.5 g/dL)", key='hgb_input')
-                
+                wbc = lab5.number_input("WBC", key='wbc_input')
+                hgb = lab6.number_input("Hgb", key='hgb_input')
                 lab7, lab8 = st.columns(2)
-                platelets = lab7.number_input("Platelets (150-450 10^9/L)", key='plt_input')
-                inr = lab8.number_input("INR (Clotting Time) [0.9-1.1]", key='inr_input')
-                
-                lactate = st.number_input("Lactate (Normal: < 2.0 mmol/L)", key='lac_input')
+                platelets = lab7.number_input("Platelets", key='plt_input')
+                inr = lab8.number_input("INR", key='inr_input')
+                lactate = st.number_input("Lactate", key='lac_input')
 
-                st.markdown("##### 📋 Medical History")
                 h1, h2 = st.columns(2)
-                anticoag = h1.checkbox("Anticoagulant Use", key='anticoag_input')
+                anticoag = h1.checkbox("Anticoagulant", key='anticoag_input')
                 liver_disease = h2.checkbox("Liver Disease", key='liver_input')
-                
                 h3, h4 = st.columns(2)
                 heart_failure = h3.checkbox("Heart Failure", key='chf_input')
-                gi_bleed = h4.checkbox("History of GI Bleed", key='gib_input')
-                
+                gi_bleed = h4.checkbox("Hx GI Bleed", key='gib_input')
                 m1, m2 = st.columns(2)
-                nsaid = m1.checkbox("NSAID Use", key='nsaid_input')
-                active_chemo = m2.checkbox("Active Chemo", key='chemo_input')
-                
+                diuretic = m1.checkbox("Diuretic", key='diuretic_input')
+                acei = m2.checkbox("ACEi/ARB", key='acei_input')
                 m3, m4 = st.columns(2)
-                diuretic = m3.checkbox("Diuretic Use", key='diuretic_input')
-                acei = m4.checkbox("ACEi/ARB", key='acei_input')
+                insulin = m3.checkbox("Insulin", key='insulin_input')
+                altered_mental = m4.checkbox("Altered Mental Status", key='ams_input')
                 
-                m5, m6 = st.columns(2)
-                insulin = m5.checkbox("Insulin", key='insulin_input')
-                hba1c_high = m6.checkbox("Uncontrolled Diabetes", key='dm_input')
-                
-                altered_mental = st.checkbox("Altered Mental Status (Confusion)", key='ams_input')
-                pain = 0
+                # Hidden inputs for model compatibility
+                nsaid = False; active_chemo = False; hba1c_high = False
 
-            st.write("") 
-            submitted = st.form_submit_button("🚀 Run Clinical Analysis", type="primary", use_container_width=True)
+            st.write(""); submitted = st.form_submit_button("🚀 Run Clinical Analysis", type="primary", use_container_width=True)
 
-    # --- LOGIC & RESULTS ---
     if submitted:
-        # 1. Calc Hemodynamics
-        final_temp_c = temp_c 
-        if sys_bp > 0:
-            map_val = (sys_bp + (2 * dia_bp)) / 3 
-            pulse_pressure = sys_bp - dia_bp
-            shock_index = hr / sys_bp if sys_bp > 0 else 0
-        else:
-            map_val, pulse_pressure, shock_index = 0, 0, 0
+        # 1. Hemodynamics
+        map_val = (sys_bp + (2 * dia_bp)) / 3 if sys_bp > 0 else 0
+        pulse_pressure = sys_bp - dia_bp
+        shock_index = hr / sys_bp if sys_bp > 0 else 0
         
-        bun_creat_ratio = bun / creat if creat > 0 else 0
-        
-        # 2. Run ML Model (Bleeding Risk)
-        if age > 0 and sys_bp > 0:
-            input_df = pd.DataFrame({
-                'age': [age], 'inr': [inr], 'systolic_bp': [sys_bp], 
-                'anticoagulant': [1 if anticoag else 0], 'gender': [gender],
-                'liver_disease': [1 if liver_disease else 0]
-            })
-            try:
-                # Try prediction (XGBoost)
-                pred_bleeding = bleeding_model.predict_proba(input_df)[0][1] * 100
-            except AttributeError:
-                # Fallback (Regressor)
-                pred_bleeding = float(bleeding_model.predict(input_df)[0])
+        # 2. Bleeding Risk Model
+        input_df = pd.DataFrame({'age': [age], 'inr': [inr], 'systolic_bp': [sys_bp], 'anticoagulant': [1 if anticoag else 0], 'gender': [gender], 'liver_disease': [1 if liver_disease else 0], 'weight': [weight_kg]})
+        try: pred_bleeding = bleeding_model.predict_proba(input_df)[0][1] * 100
+        except: pred_bleeding = float(bleeding_model.predict(input_df)[0])
 
-            # 3. Run Clinical Rules
-            pred_aki = bk.calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
-            pred_sepsis = bk.calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
-            pred_hypo = bk.calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
-            sirs_score = bk.calculate_sirs_score(final_temp_c, hr, resp_rate, wbc)
-            
-            # HAS-BLED (Manual Check)
-            has_bled = 0 
-            if sys_bp > 160: has_bled += 1
-            if creat > 2.2 or liver_disease: has_bled += 1
-            if gi_bleed: has_bled += 1
-            if inr > 1.0: has_bled += 1
-            if age > 65: has_bled += 1
-            if nsaid or anticoag: has_bled += 1
-            
-        else:
-            pred_bleeding, pred_aki, pred_sepsis, pred_hypo, sirs_score, has_bled = 0.0, 0, 0, 0, 0, 0
-            
-        status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis >= 2) else 'Stable'
+        # 3. Clinical Scores (SIRS)
+        sirs_score = 0
+        if temp_f > 100.4 or (temp_f < 96.8 and temp_f > 0): sirs_score += 1
+        if hr > 90: sirs_score += 1
+        if resp_rate > 20: sirs_score += 1
+        if wbc > 12 or (wbc < 4 and wbc > 0): sirs_score += 1
         
-        # 4. Save to Database
-        bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
+        pred_aki = bk.calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
+        pred_hypo = bk.calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
         
-        # 5. Save Results to Session
+        status_calc = 'Critical' if (pred_bleeding > 50 or sirs_score >= 2 or map_val < 65) else 'Stable'
+        
+        # SAVE TO DB WITH NAME
+        bk.save_patient_to_db(name, age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
+        
+        # STORE IN SESSION
+        st.session_state['patient_data'] = {
+            'name': name, 'id': name if name else "Unknown",
+            'status': status_calc, 'sys_bp': sys_bp, 'hr': hr, 'o2_sat': o2_sat,
+            'bleeding_risk': pred_bleeding, 'aki_risk': pred_aki, 'sepsis_risk': sirs_score, 'temp_c': (temp_f - 32) * 5/9
+        }
+        
         st.session_state['analysis_results'] = {
+            'name': name,
             'bleeding_risk': float(pred_bleeding), 'aki_risk': int(pred_aki),
-            'sepsis_risk': int(pred_sepsis), 'hypo_risk': int(pred_hypo),
-            'sirs_score': sirs_score, 'status': status_calc, 'map_val': map_val, 
-            'shock_index': shock_index, 'pulse_pressure': pulse_pressure,
-            'age': age, 'sys_bp': sys_bp, 'inr': inr, 'anticoag': anticoag,
-            'resp_rate': resp_rate, 'altered_mental': altered_mental, 
-            'temp_c': temp_c, 'o2_sat': o2_sat, 'hr': hr, 'dia_bp': dia_bp,
-            'glucose': glucose, 'potassium': potassium, 'hgb': hgb, 'wbc': wbc, 
-            'platelets': platelets, 'lactate': lactate, 'creat': creat,
-            'diuretic': diuretic, 'acei': acei, 'liver_disease': liver_disease, 'heart_failure': heart_failure
+            'sirs_score': sirs_score, 'hypo_risk': int(pred_hypo),
+            'map_val': map_val, 'shock_index': shock_index, 'pulse_pressure': pulse_pressure,
+            'age': age, 'sys_bp': sys_bp, 'dia_bp': dia_bp, 'hr': hr, 'rr': resp_rate,
+            'temp_f': temp_f, 'o2_sat': o2_sat, 'glucose': glucose, 'wbc': wbc, 
+            'lactate': lactate, 'inr': inr, 'anticoag': anticoag, 'liver_disease': liver_disease,
+            'diuretic': diuretic, 'acei': acei, 'ams': altered_mental, 'creat': creat,
+            'weight_kg': weight_kg
         }
 
-    # --- RESULTS DISPLAY (COLOR CORRECTED) ---
     if 'analysis_results' in st.session_state:
         res = st.session_state['analysis_results']
-        
         st.divider()
-        st.subheader("📊 Risk Stratification Results")
+        st.subheader(f"📊 Results for: {res.get('name', 'Unknown')}")
         
-        # Row 1: The Major Scores
         r1, r2, r3, r4 = st.columns(4)
-        
-        # 1. Bleeding Risk (Red if > 50%)
-        b_risk = res['bleeding_risk']
-        r1.metric(
-            "🩸 Bleeding Risk", 
-            f"{b_risk:.1f}%", 
-            "High" if b_risk > 50 else "Normal", 
-            delta_color="inverse" if b_risk > 50 else "normal",
-            help="XGBoost Prediction"
-        )
-        
-        # 2. AKI Risk (Red if > 50%)
-        a_risk = res['aki_risk']
-        r2.metric(
-            "💧 AKI Risk", 
-            f"{a_risk}%", 
-            "High" if a_risk > 50 else "Normal", 
-            delta_color="inverse" if a_risk > 50 else "normal",
-            help="KDIGO Criteria"
-        )
-        
-        # 3. Sepsis Score (Red if >= 2)
-        s_score = res['sepsis_risk']
-        r3.metric(
-            "🦠 Sepsis Score", 
-            f"{s_score}", 
-            "Alert" if s_score >= 2 else "Normal", 
-            delta_color="inverse" if s_score >= 2 else "normal",
-            help="qSOFA Score"
-        )
-        
-        # 4. Glycemia (Red if High or Low)
-        current_gluc = res.get('glucose', 0)
-        hypo_risk = res.get('hypo_risk', 0)
-        
-        if current_gluc > 180:
-             r4.metric("🍬 Glycemia", f"{int(current_gluc)} mg/dL", "Hyper (High)", delta_color="inverse")
-        elif current_gluc > 0 and current_gluc < 70:
-             r4.metric("🍬 Glycemia", f"{int(current_gluc)} mg/dL", "Hypo (Low)", delta_color="inverse")
-        else:
-             r4.metric(
-                 "🍬 Hypo Risk", 
-                 f"{hypo_risk}%", 
-                 "Normal",
-                 delta_color="inverse" if hypo_risk > 50 else "normal"
-             )
-
-        # Row 2: Hemodynamics
-        h1, h2, h3, h4 = st.columns(4)
-        
-        # MAP (Red if < 65)
-        map_val = int(res.get('map_val', 0))
-        h1.metric(
-            "MAP", 
-            f"{map_val} mmHg", 
-            "Low" if map_val < 65 else "Normal",
-            delta_color="inverse" if map_val < 65 else "normal",
-            help="Mean Arterial Pressure"
-        )
-        
-        # SIRS Score (Red if >= 2)
-        sirs = res.get('sirs_score', 0)
-        h2.metric(
-            "⚡ SIRS Score", 
-            f"{sirs}/4", 
-            "Alert" if sirs >= 2 else "Normal",
-            delta_color="inverse" if sirs >= 2 else "normal",
-            help="Inflammatory Response"
-        )
-        
-        # Shock Index (Red if > 0.9)
-        si = res.get('shock_index', 0)
-        h3.metric(
-            "💔 Shock Index", 
-            f"{si:.2f}", 
-            "Critical" if si > 0.9 else "Normal",
-            delta_color="inverse" if si > 0.9 else "normal",
-            help="HR / SBP"
-        )
-        
-        # Pulse Pressure (Red if Wide > 60 or Narrow < 25)
-        pp = int(res.get('pulse_pressure', 0))
-        if pp > 60:
-            pp_status = "Wide (>60)"
-            pp_color = "inverse"
-        elif pp < 25 and pp > 0:
-            pp_status = "Narrow (<25)"
-            pp_color = "inverse"
-        else:
-            pp_status = "Normal"
-            pp_color = "normal"
-            
-        h4.metric(
-            "💓 Pulse Pressure", 
-            f"{pp}", 
-            pp_status,
-            delta_color=pp_color,
-            help="SBP - DBP"
-        )
+        r1.metric("🩸 Bleeding Risk", f"{res['bleeding_risk']:.1f}%", "High" if res['bleeding_risk'] > 50 else "Normal", delta_color="inverse")
+        r2.metric("🔥 SIRS Score", f"{res['sirs_score']}/4", "Sepsis Risk" if res['sirs_score'] >= 2 else "Normal", delta_color="inverse")
+        r3.metric("MAP", f"{int(res['map_val'])} mmHg", "Low (<65)" if res['map_val'] < 65 and res['map_val'] > 0 else "Normal", delta_color="inverse")
+        r4.metric("Shock Index", f"{res['shock_index']:.2f}", "Critical (>0.9)" if res['shock_index'] > 0.9 else "Normal", delta_color="inverse")
 
         st.divider()
-
-       # --- CLINICAL ALERTS & RISK ANALYSIS (MERGED SECTION) ---
         st.markdown("### ⚠️ Clinical Alerts & Risk Analysis")
-        violations = 0 
-        pdf_alerts = [] # List to store alerts for PDF
-        
-        # --- A. AIRWAY & BREATHING ---
-        # SpO2 Logic
-        if res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 88: 
-            msg = f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%)"
-            st.error(msg); pdf_alerts.append(msg)
-            prot = "👉 Protocol: 15L O2 via Non-Rebreather. Prepare for RSI/Intubation."
-            st.info(prot); pdf_alerts.append(prot)
-            violations += 1
-        elif res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 94: # Warning Threshold
-            msg = f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%)"
+        violations = 0; pdf_alerts = []
+
+        # ALERTS LOGIC (2025)
+        if res['sirs_score'] >= 2:
+            msg = f"⚠️ SEPSIS ALERT: SIRS Criteria Met ({res['sirs_score']}/4). Screen for infection."
             st.warning(msg); pdf_alerts.append(msg); violations += 1
         
-        # Respiratory Rate Logic
-        if res.get('resp_rate', 0) > 30:
-            msg = f"🚨 SEVERE TACHYPNEA (RR {res['resp_rate']})"
-            st.error(msg); pdf_alerts.append(msg); violations += 1
-        elif res.get('resp_rate', 0) >= 22: # Sepsis Threshold
-            msg = f"⚠️ Tachypnea (RR {res['resp_rate']})"
-            st.warning(msg); pdf_alerts.append(msg); violations += 1
-        elif res.get('resp_rate', 0) < 8 and res.get('resp_rate', 0) > 0:
-            msg = f"🚨 RESPIRATORY DEPRESSION (RR {res['resp_rate']})"
+        if res['sirs_score'] >= 2 and res['map_val'] < 65 and res['lactate'] > 2:
+            msg = f"🚨 SEPTIC SHOCK ALERT: Hypotension + Hyperlactatemia."
             st.error(msg); pdf_alerts.append(msg); violations += 1
 
-        # --- B. CIRCULATION ---
-        # Blood Pressure Logic
-        if res.get('sys_bp', 0) >= 180: 
-            msg = f"🚨 SEVERE HYPERTENSION (BP {res['sys_bp']}/{res['dia_bp']})" # Updated Terminology
-            st.error(msg); pdf_alerts.append(msg); violations += 1
-        elif res.get('sys_bp', 0) >= 140 or res.get('dia_bp', 0) >= 90: # Stage 2 Warning
-            msg = f"⚠️ Stage 2 Hypertension (BP {res['sys_bp']}/{res['dia_bp']})"
-            st.warning(msg); pdf_alerts.append(msg); violations += 1
-        elif res.get('sys_bp', 0) > 0 and res.get('sys_bp', 0) < 90: 
-            msg = f"🚨 SHOCK / HYPOTENSION (BP {res['sys_bp']}/{res['dia_bp']})"
-            st.error(msg); pdf_alerts.append(msg)
-            prot = "👉 Protocol: Trendelenburg. 500mL Bolus. Start Norepinephrine if MAP < 65."
-            st.info(prot); pdf_alerts.append(prot)
-            violations += 1
-            
-        # Heart Rate Logic
-        if res.get('hr', 0) > 130:
-            msg = f"🚨 SEVERE TACHYCARDIA (HR {res['hr']})"
-            st.error(msg); pdf_alerts.append(msg); violations += 1
-        elif res.get('hr', 0) > 100: # Standard Tachycardia
-            msg = f"⚠️ Tachycardia (HR {res['hr']})"
-            st.warning(msg); pdf_alerts.append(msg); violations += 1
-        elif res.get('hr', 0) > 0 and res.get('hr', 0) < 40:
-            msg = f"🚨 SEVERE BRADYCARDIA (HR {res['hr']})"
-            st.error(msg); pdf_alerts.append(msg); violations += 1
+        if res['o2_sat'] > 0:
+            if res['o2_sat'] < 88:
+                msg = f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%)"
+                st.error(msg); pdf_alerts.append(msg); violations += 1
+            elif res['o2_sat'] < 94:
+                msg = f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%)"
+                st.warning(msg); pdf_alerts.append(msg); violations += 1
 
-        # --- C. DISABILITY / EXPOSURE ---
-        # Temperature Logic
-        if res.get('temp_c', 0) >= 39.0:
-             msg = f"🚨 HIGH FEVER ({res['temp_c']}°C)"
-             st.error(msg); pdf_alerts.append(msg); violations += 1
-        elif res.get('temp_c', 0) >= 38.0: # Standard Fever
-             msg = f"⚠️ Fever ({res['temp_c']}°C)"
-             st.warning(msg); pdf_alerts.append(msg); violations += 1
-        elif res.get('temp_c', 0) < 35.0 and res.get('temp_c', 0) > 0:
-             msg = f"🚨 HYPOTHERMIA ({res['temp_c']}°C)"
-             st.error(msg); pdf_alerts.append(msg); violations += 1
-
-        # --- D. CRITICAL LABS ---
-        # Glucose Logic
-        if res.get('glucose', 0) > 400:
-            msg = f"🚨 SEVERE HYPERGLYCEMIA ({res['glucose']} mg/dL)"
+        bp_cat, _ = get_bp_category(res['sys_bp'], res['dia_bp'])
+        if "Severe" in bp_cat:
+            msg = f"🚨 {bp_cat.upper()} (BP {res['sys_bp']}/{res['dia_bp']})"
             st.error(msg); pdf_alerts.append(msg); violations += 1
-        elif res.get('glucose', 0) > 180: # Inpatient Hyperglycemia
-            msg = f"⚠️ Hyperglycemia ({res['glucose']} mg/dL)"
-            st.warning(msg); pdf_alerts.append(msg); violations += 1
-        elif res.get('glucose', 0) > 0 and res.get('glucose', 0) < 70:
-            msg = f"🚨 HYPOGLYCEMIA ({res['glucose']} mg/dL)"
-            st.error(msg); pdf_alerts.append(msg)
-            prot = "👉 Protocol: D50 IV Push or Glucagon IM immediately."
-            st.info(prot); pdf_alerts.append(prot)
-            violations += 1
-
-        # Potassium Logic
-        if res.get('potassium', 0) > 6.0:
-            msg = f"🚨 CRITICAL HYPERKALEMIA (K+ {res['potassium']})"
+        elif "Hypotension" in bp_cat:
+            msg = f"🚨 HYPOTENSION / SHOCK RISK (BP {res['sys_bp']}/{res['dia_bp']})"
             st.error(msg); pdf_alerts.append(msg); violations += 1
-        elif res.get('potassium', 0) > 0 and res.get('potassium', 0) < 2.5:
-            msg = f"🚨 CRITICAL HYPOKALEMIA (K+ {res['potassium']})"
-            st.error(msg); pdf_alerts.append(msg); violations += 1
-            
-        # Lactate Logic
-        if res.get('lactate', 0) >= 4.0: 
-            msg = f"🚨 SEVERE LACTIC ACIDOSIS ({res['lactate']} mmol/L)"
-            st.error(msg); pdf_alerts.append(msg)
-            prot = "👉 Protocol: Aggressive IV fluids (30mL/kg). Draw Blood Cultures."
-            st.info(prot); pdf_alerts.append(prot)
-            violations += 1
-
-        # INR Logic
-        if res.get('inr', 0) > 4.5:
-             msg = f"🚨 CRITICAL COAGULOPATHY (INR {res['inr']})"
-             st.error(msg); pdf_alerts.append(msg); violations += 1
-        elif res.get('inr', 0) > 2.0 and not res.get('anticoag'):
-             msg = f"⚠️ Elevated INR ({res['inr']})"
-             st.warning(msg); pdf_alerts.append(msg); violations += 1
-
-        # --- RISK ANALYSIS MERGED INTO ALERTS ---
         
-        # Bleeding Risk Drivers
-        if res.get('inr', 0) > 3.5: 
-            st.error(f"• **Critical INR ({res.get('inr')}):** Major hemorrhage risk.")
-        elif res.get('inr', 0) > 1.2:
-            st.warning(f"• **Elevated INR ({res.get('inr')}):** Bleeding risk factor.")
-        if res.get('anticoag'): 
-            st.warning("• **Anticoagulant Use:** Patient is on blood thinners.")
-        if res.get('liver_disease'):
-            st.error("• **Liver Disease:** Coagulopathy risk.")
-        if res.get('gib_input'): 
-            st.error("• **Hx GI Bleed:** High recurrence risk.")
-        
-        bp_cat, bp_col = get_bp_category(res.get('sys_bp', 0), res.get('dia_bp', 0))
-        if "Hypertension" in bp_cat or "Crisis" in bp_cat:
-            st.markdown(f"• **BP Status:** :{bp_col}[**{bp_cat}**] (Increases bleeding risk)")
-        
-        if res.get('age', 0) > 65 and res.get('sys_bp', 0) >= 130: 
-            st.warning(f"• **2025 Guideline Target:** SBP {res.get('sys_bp')} exceeds goal (<130/80 mmHg). Treatment recommended.")
+        if res['age'] >= 65 and res['sys_bp'] >= 130:
+            st.warning(f"• **Senior BP Target:** SBP {res['sys_bp']} exceeds 2025 target (<130/80 mmHg).")
 
-        # AKI Drivers
-        if res.get('diuretic'): st.warning("• **Diuretic Use:** Nephrotoxic risk.")
-        if res.get('acei'): st.warning("• **ACEi/ARB Use:** Nephrotoxic risk.")
-        if "Hypotension" in bp_cat:
-            st.error(f"• **Perfusion:** :{bp_col}[**{bp_cat}**] (Pre-renal Failure risk)")
+        gluc_cat, _ = get_glucose_category(res['glucose'])
+        if "Level 2" in gluc_cat:
+            msg = f"🚨 {gluc_cat.upper()} ({res['glucose']} mg/dL)"
+            st.error(msg); pdf_alerts.append(msg); violations += 1
+        elif "Level 1" in gluc_cat:
+            msg = f"⚠️ {gluc_cat.upper()} ({res['glucose']} mg/dL)"
+            st.warning(msg); pdf_alerts.append(msg); violations += 1
+        elif "Action Threshold" in gluc_cat:
+            msg = f"🚨 INPATIENT HYPERGLYCEMIA ({res['glucose']} mg/dL) - Action >180."
+            st.error(msg); pdf_alerts.append(msg); violations += 1
 
-        # Sepsis Drivers
-        if res.get('resp_rate', 0) >= 22:
-            st.error(f"• **Sepsis Criteria:** RR {res.get('resp_rate')} (>=22)")
-        if res.get('sys_bp', 0) <= 100 and res.get('sys_bp', 0) > 0:
-            st.error(f"• **Sepsis Criteria:** SBP {res.get('sys_bp')} (<=100)")
-        if res.get('altered_mental'):
-            st.error("• **Sepsis Criteria:** Altered Mental Status")
-
-        # Hemodynamics
+        if res['inr'] > 3.5: st.error(f"• **Critical INR ({res.get('inr')}):** Major hemorrhage risk.")
+        if res['anticoag']: st.warning("• **Medication:** Patient is on anticoagulants.")
+        if res['gib_input']: st.error("• **History:** Previous GI Bleed (High Recurrence Risk).")
         if int(res.get('map_val', 0)) < 65 and int(res.get('map_val', 0)) > 0:
              st.error(f"• **MAP {int(res.get('map_val', 0))}:** Critical hypoperfusion.")
-        
-        current_si = res.get('shock_index', 0)
-        if current_si > 0.9: st.error(f"• **Shock Index {current_si:.2f}:** High shock probability.")
 
-        # --- FINAL STATUS CHECK ---
-        # Calculate checks first
-        has_demographics = (res.get('age', 0) > 0 or res.get('weight', 0) > 0)
+        # STATUS CHECK
+        has_demographics = (res.get('age', 0) > 0 or res.get('weight_kg', 0) > 0)
         has_vitals = (res.get('sys_bp', 0) > 0 or res.get('hr', 0) > 0)
 
-        # Only show status if NO violations were found
         if violations == 0:
             if not has_demographics and not has_vitals:
-                st.warning("⚠️ **No Data Entered:** Please input patient data to run analysis.")
+                st.warning("⚠️ **No Data Entered:** Please input patient data.")
             elif has_demographics and not has_vitals:
-                st.warning("⚠️ **Missing Vitals:** Demographics recorded, but Vital Signs (BP, HR, SpO2) are required to determine stability.")
+                st.warning("⚠️ **Missing Vitals:** Demographics recorded, but Vital Signs required.")
             else:
                 st.success("✅ **Patient Stable:** No immediate life-threatening protocol violations detected.")
-        
+
         st.divider()
-        
-        # --- AI CONSULT BUTTON ---
         c_ai, c_txt = st.columns([1, 3])
         with c_ai:
             st.markdown("#### 🤖 AI Assessment")
             if st.button("⚡ Consult AI"):
                 with st.spinner("Thinking..."):
-                    ai_context = {
-                        'age': res['age'], 'sbp': res['sys_bp'], 
-                        'bleeding_risk': res['bleeding_risk'], 'aki_risk': res['aki_risk'],
-                        'shock_index': res['shock_index']
-                    }
-                    response = bk.consult_ai_doctor("risk_assessment", "", ai_context)
-                    st.session_state['ai_result'] = response
+                    ai_response = bk.consult_ai_doctor("risk_assessment", "", st.session_state['analysis_results'])
+                    st.session_state['ai_result'] = ai_response
         with c_txt:
             if 'ai_result' in st.session_state: st.info(st.session_state['ai_result'])
-            else: st.info("👈 Fill out the patient data form above and click 'Run Clinical Analysis' to see results.")
-                
+
         st.divider()
-        st.subheader("🖨️ Export Reports")
-        
-        if st.button("📄 Generate PDF Clinical Report"):
-            ai_text = st.session_state.get('ai_result', "No AI consult run.")
-            
-            # PASS THE NEW 'pdf_alerts' LIST HERE ⬇️
-            pdf_bytes = create_pdf_report(res, ai_text, pdf_alerts)
-            
+        if st.button("📄 Generate PDF Report"):
+            pdf_bytes = create_pdf_report(res, st.session_state.get('ai_result', ""), pdf_alerts)
             b64 = base64.b64encode(pdf_bytes).decode()
-            href = f'<a href="data:application/octet-stream;base64,{b64}" download="Critical_Care_Report.pdf" style="text-decoration:none;">' \
-                   f'<button style="background-color:#FF4B4B;color:white;border:none;padding:10px 20px;border-radius:5px;cursor:pointer;">' \
-                   f'⬇️ Download Full Report</button></a>'
-            
-            st.success("✅ Professional Report Generated!")
+            href = f'<a href="data:application/octet-stream;base64,{b64}" download="Clinical_Report.pdf">Download PDF</a>'
             st.markdown(href, unsafe_allow_html=True)
-                
 
 # --- MODULE 2: PATIENT HISTORY---
 def render_history_sql():
     st.subheader("🗄️ Patient History Database")
-    
-    # Fetch Data
     df = bk.fetch_history()
-    
     if not df.empty:
-        # 1. Format the DataFrame for Display
+        # Reorder columns to show Name first
+        cols = ['timestamp', 'name', 'age', 'gender', 'sbp', 'aki_risk_score', 'bleeding_risk_score', 'status']
+        # Filter existing columns in case of schema drift
+        cols = [c for c in cols if c in df.columns]
+        df = df[cols]
+        
         if 'timestamp' in df.columns:
             df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M')
-
-        # 2. Styling Helper
-        def highlight_risk(val):
-            if isinstance(val, (int, float)):
-                if val > 50: return 'background-color: #ffcdd2; color: black;' # Red
-                if val > 20: return 'background-color: #fff9c4; color: black;' # Yellow
-            return ''
-
-        # 3. Configure Columns
-        st.dataframe(
-            df,
-            column_config={
-                "timestamp": st.column_config.TextColumn("📅 Date & Time", width="medium"),
-                "age": st.column_config.NumberColumn("👤 Age", format="%d yrs"),
-                "gender": st.column_config.TextColumn("⚧ Gender", width="small"),
-                "sbp": st.column_config.NumberColumn("❤️ SBP", format="%d mmHg"),
-                "aki_risk_score": st.column_config.ProgressColumn(
-                    "💧 AKI Risk", 
-                    format="%d%%", 
-                    min_value=0, 
-                    max_value=100,
-                    help="Acute Kidney Injury Probability"
-                ),
-                "bleeding_risk_score": st.column_config.ProgressColumn(
-                    "🩸 Bleed Risk", 
-                    format="%.1f%%", 
-                    min_value=0, 
-                    max_value=100,
-                    help="Hemorrhage Risk Score"
-                ),
-                "status": st.column_config.TextColumn("🏥 Status"),
-            },
-            use_container_width=True,
-            height=400,
-            hide_index=True
-        )
-
-        st.divider()
-        
-        # 4. Analytics Section
-        st.markdown("### 📈 Cohort Analytics")
-        c1, c2 = st.columns(2)
-        
-        with c1:
-            st.caption("Risk Distribution by Age")
-            st.scatter_chart(df, x='age', y='bleeding_risk_score', color='status', height=250)
             
-        with c2:
-            st.caption("Average Vitals Trend")
-            if len(df) > 1:
-                st.line_chart(df.set_index('timestamp')['sbp'], height=250)
-            else:
-                st.info("Need more data for trend analysis.")
-
-        # 5. Admin Actions
-        with st.expander("⚙️ Database Management"):
-            if st.button("🗑️ Clear All Records", type="secondary"):
-                bk.clear_history()
-                st.rerun()
+        st.dataframe(
+            df, 
+            use_container_width=True, 
+            height=400, 
+            hide_index=True,
+            column_config={
+                "name": st.column_config.TextColumn("Patient Name", width="medium"),
+                "aki_risk_score": st.column_config.ProgressColumn("AKI Risk", format="%d%%", min_value=0, max_value=100),
+                "bleeding_risk_score": st.column_config.ProgressColumn("Bleed Risk", format="%.1f%%", min_value=0, max_value=100),
+            }
+        )
+        if st.button("🗑️ Clear All Records"):
+            bk.clear_history()
+            st.rerun()
     else:
-        st.info("📭 Database is empty. Run a Risk Analysis to create records.")
+        st.info("📭 Database is empty.")
 
-# --- MODULE 3: LIVE DASHBOARD (LINKED TO CALCULATOR) ---
+# --- MODULE 3: LIVE DASHBOARD ---
 def render_dashboard():
-    # 1. GET DATA FROM SESSION STATE
     data = st.session_state.get('patient_data', {})
-    
-    # Default values if no analysis has been run yet
     if not data:
         st.warning("⚠️ No patient data found. Please run the Risk Calculator first.")
         return
 
-    is_critical = data.get('status') == 'Critical'
+    # Name display logic
+    patient_name = data.get('name') if data.get('name') else "Unknown Patient"
     
-    # --- HEADER & AI BUTTON ---
+    st.subheader(f"🛏️ Bedside Monitor: {patient_name}")
+    st.caption(f"Status: **{data.get('status', 'Unknown')}**")
+    
+    st.divider()
     c1, c2 = st.columns([3, 1])
     with c1:
-        st.subheader(f"🛏️ Bedside Monitor: {data.get('id', 'Unknown')}")
-        st.caption(f"Status: **{data.get('status', 'Unknown')}**")
+        # Mock Live Trace
+        base_sbp = data.get('sys_bp', 120)
+        base_hr = data.get('hr', 80)
+        chart_data = pd.DataFrame({
+            'Time': range(20),
+            'Systolic BP': np.random.normal(base_sbp, 2, 20),
+            'Heart Rate': np.random.normal(base_hr, 2, 20)    
+        }).melt('Time', var_name='Metric', value_name='Value')
+        c = alt.Chart(chart_data).mark_line(interpolate='basis').encode(
+            x=alt.X('Time', axis=None), y=alt.Y('Value', scale=alt.Scale(zero=False)), color='Metric'
+        ).properties(height=200)
+        st.altair_chart(c, use_container_width=True)
     
     with c2:
+        st.metric("SBP", f"{int(base_sbp)}")
+        st.metric("HR", f"{int(base_hr)}")
+        st.metric("SpO2", f"{int(data.get('o2_sat', 0))}%")
+        
         # AI DISCHARGE SUMMARY
-        if st.button("✨ Generate Discharge Note", type="primary"):
-            with st.spinner("Consulting Gemini 2.0..."):
+        st.write("")
+        if st.button("✨ Discharge Note"):
+            with st.spinner("Generating..."):
                 ai_summary = bk.generate_discharge_summary(data)
                 st.session_state['latest_discharge_note'] = ai_summary
         
-        # --- Timestamped Download ---
         if 'latest_discharge_note' in st.session_state:
             st.download_button(
-                label="📥 Download Note",
+                label="📥 Download",
                 data=st.session_state['latest_discharge_note'],
                 file_name=f"discharge_{data.get('id')}_{get_timestamp()}.txt",
                 mime="text/plain"
             )
-            
-    # --- PREVIEW AREA (View Generated Summary) ---
-    if 'latest_discharge_note' in st.session_state:
-        with st.expander("📄 View Generated Summary", expanded=True):
-            st.text_area("Edit before downloading:", value=st.session_state['latest_discharge_note'], height=200)
 
-    st.divider()
-
-    # --- REAL-TIME VITALS PANEL (Uses Real Inputs) ---
-    with st.container(border=True):
-        st.markdown("#### 📉 Real-Time Telemetry")
-        
-        st.caption("ℹ️ Note: Telemetry trace below is simulated based on static input data for UI demonstration.")
-        
-        col_chart, col_vitals = st.columns([3, 1])
-        
-        with col_chart:
-            # Simulate a live trace based on the INPUT BP and HR
-            base_sbp = data.get('sys_bp', 120)
-            base_hr = data.get('hr', 80)
-            
-            chart_data = pd.DataFrame({
-                'Time': range(20),
-                'Systolic BP': np.random.normal(base_sbp, 2, 20),
-                'Heart Rate': np.random.normal(base_hr, 2, 20)    
-            }).melt('Time', var_name='Metric', value_name='Value')
-            
-            c = alt.Chart(chart_data).mark_line(interpolate='basis', strokeWidth=3).encode(
-                x=alt.X('Time', axis=None),
-                y=alt.Y('Value', scale=alt.Scale(zero=False)),
-                color=alt.Color('Metric', scale=alt.Scale(range=['#FF4B4B', '#00CC96']))
-            ).properties(height=200)
-            
-            st.altair_chart(c, use_container_width=True)
-
-        with col_vitals:
-            st.markdown(f"""
-            <div style="background-color:#0E1117; padding:15px; border-radius:10px; text-align:center; border: 1px solid #333;">
-                <h3 style="color:#FF4B4B; margin:0;">{int(data.get('sys_bp', 0))}</h3>
-                <p style="color:gray; font-size:12px; margin:0;">mmHg (SBP)</p>
-                <hr style="margin: 10px 0; border-color:#333;">
-                <h3 style="color:#00CC96; margin:0;">{int(data.get('hr', 0))}</h3>
-                <p style="color:gray; font-size:12px; margin:0;">BPM (HR)</p>
-                <hr style="margin: 10px 0; border-color:#333;">
-                <h3 style="color:#00A6ED; margin:0;">{int(data.get('o2_sat', 0))}%</h3>
-                <p style="color:gray; font-size:12px; margin:0;">SpO2</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-    # --- RISK METRICS (From Analysis) ---
-    st.markdown("#### ⚠️ Risk Stratification")
-    r1, r2, r3, r4 = st.columns(4)
-    
-    r1.metric("🩸 Bleeding Risk", f"{data.get('bleeding_risk', 0):.1f}%", 
-              "High" if data.get('bleeding_risk', 0) > 50 else "Normal", delta_color="inverse",
-              help="Probability of major hemorrhage based on XGBoost model.")
-    
-    r2.metric("💧 AKI Risk", f"{data.get('aki_risk', 0)}%", 
-              "Critical" if data.get('aki_risk', 0) > 50 else "Normal", delta_color="inverse",
-              help="Acute Kidney Injury Risk based on KDIGO criteria.")
-    
-    r3.metric("🦠 Sepsis Score", f"{data.get('sepsis_risk', 0)}", 
-              "Alert" if data.get('sepsis_risk', 0) >= 2 else "Normal", delta_color="inverse",
-              help="qSOFA Score (0-3). ≥2 indicates high sepsis risk.")
-    
-    r4.metric("🌡️ Temp", f"{data.get('temp_c', 37.0):.1f}°C", "Fever" if data.get('temp_c', 37) > 38 else "Normal", delta_color="inverse")
-
-# --- MODULE 4: BATCH ANALYSIS (SMART VALIDATION & NEWS-2) ---
+# --- MODULE 4: BATCH ANALYSIS (CSV) ---
 def render_batch_analysis():
     st.subheader("Bulk Patient Processing & Diagnostic Triage")
     
@@ -1303,7 +765,7 @@ if not st.session_state['entered_app']:
 else:
     with st.sidebar:
         st.title("Navigation")
-        menu = st.radio("Select Module", [
+        menu = st.radio("Module", [
             "Risk Calculator", 
             "Patient History (SQL)",
             "Live Dashboard", 
