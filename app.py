@@ -316,12 +316,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏥 Clinical Risk Monitor: High-Acuity IOP Dashboard")
-st.markdown("""
-**Objective:** A Measurement-Based Care (MBC) tool to predict **patient deterioration** and **readmission risk** in outpatient settings.
-* **Key Features:** Medication Non-Adherence Tracking, Symptom Severity Scoring (PHQ-9/GAD-7), and Risk Stratification.
-* **Tech Stack:** Python, Machine Learning (Scikit-Learn), Streamlit.
-""")
+# --- HEADER SECTION MODIFIED (REMOVED DESCRIPTION) ---
+st.title("🏥 Clinical Risk Monitor")
+st.markdown("### High-Acuity IOP Dashboard")
 st.divider()
 
 # Helper for file timestamps
@@ -486,22 +483,22 @@ def render_risk_calculator():
             with col_right:
                 st.markdown("##### 🧪 Critical Labs")
                 lab1, lab2 = st.columns(2)
-                creat = lab1.number_input("Creatinine (0.6-1.2 mg/dL)", 0.0, 20.0, key='creat_input')
-                bun = lab2.number_input("Blood Urea Nitrogen (7-20)", 0, 100, key='bun_input')
+                creat = lab1.number_input("Creatinine (0.6-1.2 mg/dL)", key='creat_input')
+                bun = lab2.number_input("Blood Urea Nitrogen (7-20)", key='bun_input')
                 
                 lab3, lab4 = st.columns(2)
-                potassium = lab3.number_input("Potassium (3.5-5.0 mmol/L)", 0.0, 10.0, key='k_input')
-                glucose = lab4.number_input("Glucose (70-100 mg/dL)", 0, 1000, key='glc_input')
+                potassium = lab3.number_input("Potassium (3.5-5.0 mmol/L)", key='k_input')
+                glucose = lab4.number_input("Glucose (70-100 mg/dL)", key='glc_input')
                 
                 lab5, lab6 = st.columns(2)
-                wbc = lab5.number_input("WBC (4.5-11.0 10^9/L)", 0.0, 50.0, key='wbc_input')
-                hgb = lab6.number_input("Hemoglobin (13.5-17.5 g/dL)", 0.0, 20.0, key='hgb_input')
+                wbc = lab5.number_input("WBC (4.5-11.0 10^9/L)", key='wbc_input')
+                hgb = lab6.number_input("Hemoglobin (13.5-17.5 g/dL)", key='hgb_input')
                 
                 lab7, lab8 = st.columns(2)
-                platelets = lab7.number_input("Platelets (150-450 10^9/L)", 0, 1000, key='plt_input')
-                inr = lab8.number_input("INR (Clotting Time) [0.9-1.1]", 0.0, 10.0, key='inr_input')
+                platelets = lab7.number_input("Platelets (150-450 10^9/L)", key='plt_input')
+                inr = lab8.number_input("INR (Clotting Time) [0.9-1.1]", key='inr_input')
                 
-                lactate = st.number_input("Lactate (Normal: < 2.0 mmol/L)", 0.0, 20.0, key='lac_input')
+                lactate = st.number_input("Lactate (Normal: < 2.0 mmol/L)", key='lac_input')
 
                 st.markdown("##### 📋 Medical History")
                 h1, h2 = st.columns(2)
