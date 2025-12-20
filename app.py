@@ -806,21 +806,19 @@ def render_risk_calculator():
              msg = f"⚠️ Elevated INR ({res['inr']})"
              st.warning(msg); pdf_alerts.append(msg); violations += 1
 
-        if violations == 0: 
-            st.success("✅ Patient Stable: No active alerts.")
-            
-        # --- Check for missing data (optional) ---
+       # --- FINAL STATUS CHECK ---
+        # Calculate checks first
         has_demographics = (res.get('age', 0) > 0 or res.get('weight', 0) > 0)
         has_vitals = (res.get('sys_bp', 0) > 0 or res.get('hr', 0) > 0)
 
+        # Only show status if NO violations were found
         if violations == 0:
             if not has_demographics and not has_vitals:
                 st.warning("⚠️ **No Data Entered:** Please input patient data to run analysis.")
             elif has_demographics and not has_vitals:
                 st.warning("⚠️ **Missing Vitals:** Demographics recorded, but Vital Signs (BP, HR, SpO2) are required to determine stability.")
             else:
-                st.success("✅ **Patient Stable:** No immediate life-threatening protocol violations detected.")
-        
+                st.success("✅ **Patient Stable:** No immediate life-threatening protocol violations detected.")        
         st.divider()
         st.markdown("#### 🔍 Risk Factor Breakdown")
         
