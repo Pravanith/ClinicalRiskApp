@@ -79,10 +79,11 @@ def extract_data_from_soap(note_text):
     If a value is not mentioned, return null.
     
     Keys to extract:
-    - name (string, extract patient name if available)
+    - name (string)
     - age (integer)
     - gender (string)
-    - weight_lbs (float. If note is in kg, convert to lbs: kg * 2.20462)
+    - weight_lbs (float. If note is in kg, convert to lbs)
+    - height_cm (integer)
     - sbp (integer)
     - dbp (integer)
     - hr (integer)
@@ -145,7 +146,6 @@ def create_pdf_report(res, ai_assessment, alerts_list):
     pdf.set_font("Arial", size=11)
     
     weight_val = res.get('weight_kg', 0) * 2.20462 if res.get('weight_kg') else 0
-    # Include Name in PDF
     patient_info = f"Name: {res.get('name', 'Unknown')} | Age: {res.get('age')} | Gender: {res.get('gender')}"
     pdf.cell(0, 6, txt=clean_text(patient_info), ln=1)
     pdf.cell(0, 6, txt=f"Weight: {weight_val:.1f} lbs", ln=1)
@@ -247,6 +247,7 @@ def render_risk_calculator():
                     if data.get('age'): st.session_state['age_input'] = int(data['age'])
                     if data.get('gender'): st.session_state['gender_input'] = data['gender']
                     if data.get('weight_lbs'): st.session_state['weight_input'] = float(data['weight_lbs'])
+                    if data.get('height_cm'): st.session_state['height_input'] = int(data['height_cm'])
                     if data.get('sbp'): st.session_state['sbp_input'] = int(data['sbp'])
                     if data.get('dbp'): st.session_state['dbp_input'] = int(data['dbp'])
                     if data.get('hr'): st.session_state['hr_input'] = int(data['hr'])
@@ -269,11 +270,17 @@ def render_risk_calculator():
             with col_left:
                 st.markdown("##### 👤 Profile & Vitals")
                 l1, l2 = st.columns(2)
-                age = l1.number_input("Age", min_value=0, max_value=120, key='age_input')
+                age = l1.number_input("Age (Years)", min_value=0, max_value=120, key='age_input')
                 gender = l2.selectbox("Gender", ["Male", "Female"], key='gender_input')
                 
-                weight_lbs = st.number_input("Weight (lbs)", 0.0, 500.0, key='weight_input')
+                w1, w2 = st.columns(2)
+                weight_lbs = w1.number_input("Weight (lbs)", 0.0, 500.0, key='weight_input')
+                # Restored Height Input
+                height_cm = w2.number_input("Height (cm)", 0, 250, key='height_input')
+                
+                # Logic
                 weight_kg = weight_lbs * 0.453592 
+                bmi = weight_kg / ((height_cm/100)**2) if height_cm > 0 else 0
 
                 v1, v2 = st.columns(2)
                 sys_bp = v1.number_input("Systolic BP", 0, 300, key='sbp_input')
@@ -287,19 +294,20 @@ def render_risk_calculator():
 
             with col_right:
                 st.markdown("##### 🧪 Labs & History")
+                # Restored Min/Max values for labs
                 lab1, lab2 = st.columns(2)
-                creat = lab1.number_input("Creatinine", key='creat_input')
-                bun = lab2.number_input("BUN", key='bun_input')
+                creat = lab1.number_input("Creatinine", 0.0, 20.0, key='creat_input')
+                bun = lab2.number_input("BUN", 0, 100, key='bun_input')
                 lab3, lab4 = st.columns(2)
-                potassium = lab3.number_input("Potassium", key='k_input')
-                glucose = lab4.number_input("Glucose", key='glc_input')
+                potassium = lab3.number_input("Potassium", 0.0, 10.0, key='k_input')
+                glucose = lab4.number_input("Glucose", 0, 1000, key='glc_input')
                 lab5, lab6 = st.columns(2)
-                wbc = lab5.number_input("WBC", key='wbc_input')
-                hgb = lab6.number_input("Hgb", key='hgb_input')
+                wbc = lab5.number_input("WBC", 0.0, 50.0, key='wbc_input')
+                hgb = lab6.number_input("Hgb", 0.0, 20.0, key='hgb_input')
                 lab7, lab8 = st.columns(2)
-                platelets = lab7.number_input("Platelets", key='plt_input')
-                inr = lab8.number_input("INR", key='inr_input')
-                lactate = st.number_input("Lactate", key='lac_input')
+                platelets = lab7.number_input("Platelets", 0, 1000, key='plt_input')
+                inr = lab8.number_input("INR", 0.0, 10.0, key='inr_input')
+                lactate = st.number_input("Lactate", 0.0, 20.0, key='lac_input')
 
                 h1, h2 = st.columns(2)
                 anticoag = h1.checkbox("Anticoagulant", key='anticoag_input')
@@ -361,7 +369,9 @@ def render_risk_calculator():
             'temp_f': temp_f, 'o2_sat': o2_sat, 'glucose': glucose, 'wbc': wbc, 
             'lactate': lactate, 'inr': inr, 'anticoag': anticoag, 'liver_disease': liver_disease,
             'diuretic': diuretic, 'acei': acei, 'ams': altered_mental, 'creat': creat,
-            'weight_kg': weight_kg
+            'weight_kg': weight_kg,
+            # FIXED KEY ERROR HERE
+            'gib_input': gi_bleed 
         }
 
     if 'analysis_results' in st.session_state:
@@ -420,7 +430,10 @@ def render_risk_calculator():
 
         if res['inr'] > 3.5: st.error(f"• **Critical INR ({res.get('inr')}):** Major hemorrhage risk.")
         if res['anticoag']: st.warning("• **Medication:** Patient is on anticoagulants.")
-        if res['gib_input']: st.error("• **History:** Previous GI Bleed (High Recurrence Risk).")
+        
+        # FIXED GIB ALERT LOGIC
+        if res.get('gib_input'): st.error("• **History:** Previous GI Bleed (High Recurrence Risk).")
+        
         if int(res.get('map_val', 0)) < 65 and int(res.get('map_val', 0)) > 0:
              st.error(f"• **MAP {int(res.get('map_val', 0))}:** Critical hypoperfusion.")
 
