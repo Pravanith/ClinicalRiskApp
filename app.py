@@ -11,12 +11,12 @@ import google.generativeai as genai
 # --- CLINICAL GUIDELINE CLASSIFIERS (AHA, ADA, SEPSIS-3) ---
 
 def get_bp_category(sbp, dbp):
-    """Source: 2017 ACC/AHA High Blood Pressure Guidelines"""
+    """Source: 2025 ACC/AHA High Blood Pressure Guidelines"""
     if sbp < 90 or dbp < 60: return "Hypotension (Shock Risk)", "red" # Added Shock
     elif sbp < 120 and dbp < 80: return "Normal", "green"
     elif 120 <= sbp <= 129 and dbp < 80: return "Elevated", "orange"
     elif (130 <= sbp <= 139) or (80 <= dbp <= 89): return "Stage 1 Hypertension", "orange"
-    elif sbp >= 180 or dbp >= 120: return "Hypertensive Crisis", "red" # Added Crisis
+    elif sbp >= 180 or dbp >= 120: return "Severe Hypertension", "red" # Updated 2025 Terminology
     elif sbp >= 140 or dbp >= 90: return "Stage 2 Hypertension", "red"
     return "Unclassified", "gray"
 
@@ -732,7 +732,7 @@ def render_risk_calculator():
         # --- B. CIRCULATION ---
         # Blood Pressure Logic
         if res.get('sys_bp', 0) >= 180: 
-            msg = f"🚨 HYPERTENSIVE CRISIS (BP {res['sys_bp']}/{res['dia_bp']})"
+            msg = f"🚨 SEVERE HYPERTENSION (BP {res['sys_bp']}/{res['dia_bp']})" # Updated Terminology
             st.error(msg); pdf_alerts.append(msg); violations += 1
         elif res.get('sys_bp', 0) >= 140 or res.get('dia_bp', 0) >= 90: # Stage 2 Warning
             msg = f"⚠️ Stage 2 Hypertension (BP {res['sys_bp']}/{res['dia_bp']})"
@@ -824,8 +824,8 @@ def render_risk_calculator():
         if "Hypertension" in bp_cat or "Crisis" in bp_cat:
             st.markdown(f"• **BP Status:** :{bp_col}[**{bp_cat}**] (Increases bleeding risk)")
         
-        if res.get('age', 0) > 65: 
-            st.info(f"• **Age ({res.get('age')}):** Geriatric risk factor.")
+        if res.get('age', 0) > 65 and res.get('sys_bp', 0) >= 130: 
+            st.warning(f"• **2025 Guideline Target:** SBP {res.get('sys_bp')} exceeds goal (<130/80 mmHg). Treatment recommended.")
 
         # AKI Drivers
         if res.get('diuretic'): st.warning("• **Diuretic Use:** Nephrotoxic risk.")
