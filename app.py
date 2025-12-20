@@ -316,9 +316,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- HEADER SECTION MODIFIED (REMOVED DESCRIPTION) ---
+# --- HEADER SECTION MODIFIED (CLEAN TITLE) ---
 st.title("🏥 Clinical Risk Monitor")
-st.markdown("### High-Acuity IOP Dashboard")
 st.divider()
 
 # Helper for file timestamps
