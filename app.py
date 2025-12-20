@@ -730,122 +730,115 @@ def render_risk_calculator():
                 if current_si > 0.9: st.error("• Index > 0.9: High probability of shock.")
                 elif current_si > 0.7: st.warning("• Index 0.7 - 0.9: Monitor closely.")
                 else: st.success("• Index < 0.7: Hemodynamically stable.")
-       # --- CLINICAL ALERTS & PROTOCOLS (WITH PDF CAPTURE) ---
+                    
+       # --- CLINICAL ALERTS (HIGH SENSITIVITY MODE) ---
         st.markdown("### ⚠️ Clinical Alerts & AI Recommendations")
         violations = 0 
-        pdf_alerts = [] # <--- THIS IS THE NEW LIST TO STORE ALERTS
+        pdf_alerts = [] # List to store alerts for PDF
         
         # --- A. AIRWAY & BREATHING ---
+        # SpO2 Logic
         if res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 88: 
             msg = f"🚨 CRITICAL HYPOXIA (SpO2 {res['o2_sat']}%)"
-            st.error(msg)
-            pdf_alerts.append(msg) # <--- CAPTURE
-            
-            prot = "👉 Protocol: 15L O2 via Non-Rebreather. Prepare for RSI/Intubation. Check ABG."
-            st.info(prot)
-            pdf_alerts.append(prot) # <--- CAPTURE
+            st.error(msg); pdf_alerts.append(msg)
+            prot = "👉 Protocol: 15L O2 via Non-Rebreather. Prepare for RSI/Intubation."
+            st.info(prot); pdf_alerts.append(prot)
             violations += 1
-            
-        elif res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 92:
+        elif res.get('o2_sat', 0) > 0 and res.get('o2_sat', 0) < 94: # Warning Threshold
             msg = f"⚠️ Hypoxia (SpO2 {res['o2_sat']}%)"
-            st.warning(msg)
-            pdf_alerts.append(msg)
-            violations += 1
+            st.warning(msg); pdf_alerts.append(msg); violations += 1
         
+        # Respiratory Rate Logic
         if res.get('resp_rate', 0) > 30:
             msg = f"🚨 SEVERE TACHYPNEA (RR {res['resp_rate']})"
-            st.error(msg)
-            pdf_alerts.append(msg)
-            violations += 1
+            st.error(msg); pdf_alerts.append(msg); violations += 1
+        elif res.get('resp_rate', 0) >= 22: # Sepsis Threshold
+            msg = f"⚠️ Tachypnea (RR {res['resp_rate']})"
+            st.warning(msg); pdf_alerts.append(msg); violations += 1
         elif res.get('resp_rate', 0) < 8 and res.get('resp_rate', 0) > 0:
             msg = f"🚨 RESPIRATORY DEPRESSION (RR {res['resp_rate']})"
-            st.error(msg)
-            pdf_alerts.append(msg)
-            violations += 1
+            st.error(msg); pdf_alerts.append(msg); violations += 1
 
         # --- B. CIRCULATION ---
-        if res.get('sys_bp', 0) > 180: 
+        # Blood Pressure Logic
+        if res.get('sys_bp', 0) >= 180: 
             msg = f"🚨 HYPERTENSIVE CRISIS (BP {res['sys_bp']}/{res['dia_bp']})"
-            st.error(msg)
-            pdf_alerts.append(msg)
-            violations += 1
+            st.error(msg); pdf_alerts.append(msg); violations += 1
+        elif res.get('sys_bp', 0) >= 140 or res.get('dia_bp', 0) >= 90: # Stage 2 Warning
+            msg = f"⚠️ Stage 2 Hypertension (BP {res['sys_bp']}/{res['dia_bp']})"
+            st.warning(msg); pdf_alerts.append(msg); violations += 1
         elif res.get('sys_bp', 0) > 0 and res.get('sys_bp', 0) < 90: 
             msg = f"🚨 SHOCK / HYPOTENSION (BP {res['sys_bp']}/{res['dia_bp']})"
-            st.error(msg)
-            pdf_alerts.append(msg)
-            
-            prot = "👉 Protocol: Trendelenburg position. 500mL Fluid Bolus. Start Norepinephrine if MAP < 65."
-            st.info(prot)
-            pdf_alerts.append(prot)
+            st.error(msg); pdf_alerts.append(msg)
+            prot = "👉 Protocol: Trendelenburg. 500mL Bolus. Start Norepinephrine if MAP < 65."
+            st.info(prot); pdf_alerts.append(prot)
             violations += 1
             
+        # Heart Rate Logic
         if res.get('hr', 0) > 130:
             msg = f"🚨 SEVERE TACHYCARDIA (HR {res['hr']})"
-            st.error(msg)
-            pdf_alerts.append(msg)
-            violations += 1
+            st.error(msg); pdf_alerts.append(msg); violations += 1
+        elif res.get('hr', 0) > 100: # Standard Tachycardia
+            msg = f"⚠️ Tachycardia (HR {res['hr']})"
+            st.warning(msg); pdf_alerts.append(msg); violations += 1
         elif res.get('hr', 0) > 0 and res.get('hr', 0) < 40:
             msg = f"🚨 SEVERE BRADYCARDIA (HR {res['hr']})"
-            st.error(msg)
-            pdf_alerts.append(msg)
-            violations += 1
+            st.error(msg); pdf_alerts.append(msg); violations += 1
 
         # --- C. DISABILITY / EXPOSURE ---
-        if res.get('temp_c', 0) > 39.0:
+        # Temperature Logic
+        if res.get('temp_c', 0) >= 39.0:
              msg = f"🚨 HIGH FEVER ({res['temp_c']}°C)"
-             st.error(msg)
-             pdf_alerts.append(msg)
-             violations += 1
+             st.error(msg); pdf_alerts.append(msg); violations += 1
+        elif res.get('temp_c', 0) >= 38.0: # Standard Fever
+             msg = f"⚠️ Fever ({res['temp_c']}°C)"
+             st.warning(msg); pdf_alerts.append(msg); violations += 1
         elif res.get('temp_c', 0) < 35.0 and res.get('temp_c', 0) > 0:
              msg = f"🚨 HYPOTHERMIA ({res['temp_c']}°C)"
-             st.error(msg)
-             pdf_alerts.append(msg)
-             violations += 1
+             st.error(msg); pdf_alerts.append(msg); violations += 1
 
         # --- D. CRITICAL LABS ---
+        # Glucose Logic
         if res.get('glucose', 0) > 400:
             msg = f"🚨 SEVERE HYPERGLYCEMIA ({res['glucose']} mg/dL)"
-            st.error(msg)
-            pdf_alerts.append(msg)
-            violations += 1
+            st.error(msg); pdf_alerts.append(msg); violations += 1
+        elif res.get('glucose', 0) > 180: # Inpatient Hyperglycemia
+            msg = f"⚠️ Hyperglycemia ({res['glucose']} mg/dL)"
+            st.warning(msg); pdf_alerts.append(msg); violations += 1
         elif res.get('glucose', 0) > 0 and res.get('glucose', 0) < 70:
             msg = f"🚨 HYPOGLYCEMIA ({res['glucose']} mg/dL)"
-            st.error(msg)
-            pdf_alerts.append(msg)
-            
-            prot = "👉 Protocol: D50 IV Push or Glucagon IM immediately. Recheck glucose in 15 mins."
-            st.info(prot)
-            pdf_alerts.append(prot)
+            st.error(msg); pdf_alerts.append(msg)
+            prot = "👉 Protocol: D50 IV Push or Glucagon IM immediately."
+            st.info(prot); pdf_alerts.append(prot)
             violations += 1
 
+        # Potassium Logic
         if res.get('potassium', 0) > 6.0:
             msg = f"🚨 CRITICAL HYPERKALEMIA (K+ {res['potassium']})"
-            st.error(msg)
-            pdf_alerts.append(msg)
-            violations += 1
+            st.error(msg); pdf_alerts.append(msg); violations += 1
         elif res.get('potassium', 0) > 0 and res.get('potassium', 0) < 2.5:
             msg = f"🚨 CRITICAL HYPOKALEMIA (K+ {res['potassium']})"
-            st.error(msg)
-            pdf_alerts.append(msg)
-            violations += 1
+            st.error(msg); pdf_alerts.append(msg); violations += 1
             
+        # Lactate Logic
         if res.get('lactate', 0) >= 4.0: 
             msg = f"🚨 SEVERE LACTIC ACIDOSIS ({res['lactate']} mmol/L)"
-            st.error(msg)
-            pdf_alerts.append(msg)
-            
-            prot = "👉 Protocol: Aggressive IV fluids (30mL/kg). Draw Blood Cultures. Start Broad-Spectrum Antibiotics."
-            st.info(prot)
-            pdf_alerts.append(prot)
+            st.error(msg); pdf_alerts.append(msg)
+            prot = "👉 Protocol: Aggressive IV fluids (30mL/kg). Draw Blood Cultures."
+            st.info(prot); pdf_alerts.append(prot)
             violations += 1
-        
-        # --- Check for INR (Add this if it was missing) ---
-        if res.get('inr', 0) > 5.0:
-             msg = f"🚨 CRITICAL COAGULOPATHY (INR {res['inr']})"
-             st.error(msg)
-             pdf_alerts.append(msg)
-             violations += 1
 
+        # INR Logic
+        if res.get('inr', 0) > 4.5:
+             msg = f"🚨 CRITICAL COAGULOPATHY (INR {res['inr']})"
+             st.error(msg); pdf_alerts.append(msg); violations += 1
+        elif res.get('inr', 0) > 2.0 and not res.get('anticoag'):
+             msg = f"⚠️ Elevated INR ({res['inr']})"
+             st.warning(msg); pdf_alerts.append(msg); violations += 1
+
+        if violations == 0: 
+            st.success("✅ Patient Stable: No active alerts.")
+            
         # --- Check for missing data (optional) ---
         has_demographics = (res.get('age', 0) > 0 or res.get('weight', 0) > 0)
         has_vitals = (res.get('sys_bp', 0) > 0 or res.get('hr', 0) > 0)
