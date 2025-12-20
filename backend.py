@@ -383,8 +383,12 @@ def consult_ai_doctor(role, user_input, patient_context=None):
         # 1. Redact PII for Privacy/HIPAA Compliance
         safe_input = redact_pii(user_input)
         
-        # 2. Configure Model
-        genai.configure(api_key=st.secrets)
+       # 2. Configure Model (FIXED)
+        if "GEMINI_API_KEY" in st.secrets:
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        else:
+            return "Error: GEMINI_API_KEY not found in secrets."
+
         model = genai.GenerativeModel('gemini-2.0-flash')
         
         # 3. Chain-of-Thought Prompting (Higher reliability)
