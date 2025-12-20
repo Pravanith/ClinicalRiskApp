@@ -99,6 +99,24 @@ def create_pdf_report(res, ai_assessment, alerts_list):
     pdf = FPDF()
     pdf.add_page()
     
+    # --- HELPER: Emoji Sanitizer ---
+    # This function replaces emojis with safe text so the PDF doesn't crash
+    def clean_text(text):
+        if not isinstance(text, str): return str(text)
+        # Replace specific emojis we use in the app
+        text = text.replace("🚨", "[CRITICAL] ")
+        text = text.replace("⚠️", "[WARNING] ")
+        text = text.replace("👉", "-> ")
+        text = text.replace("✅", "[OK] ")
+        text = text.replace("🤖", "[AI] ")
+        text = text.replace("⚡", "")
+        text = text.replace("🩸", "")
+        text = text.replace("💧", "")
+        text = text.replace("🦠", "")
+        text = text.replace("🍬", "")
+        # Force convert any remaining complex characters to simple question marks
+        return text.encode('latin-1', 'replace').decode('latin-1')
+
     # --- Header ---
     pdf.set_font("Arial", 'B', 16)
     pdf.cell(0, 10, txt="Clinical Risk Monitor - Critical Care Report", ln=1, align='C')
@@ -109,14 +127,21 @@ def create_pdf_report(res, ai_assessment, alerts_list):
 
     # --- 1. Patient Profile ---
     pdf.set_font("Arial", 'B', 12)
-    pdf.set_fill_color(240, 240, 240) # Light Gray Background
+    pdf.set_fill_color(240, 240, 240) # Light Gray
     pdf.cell(0, 10, txt="1. Patient Demographics & Vitals", ln=1, fill=True)
     pdf.set_font("Arial", size=11)
     pdf.ln(2)
-    pdf.cell(95, 10, txt=f"Age: {res.get('age')} | Gender: {res.get('gender')}")
-    pdf.cell(95, 10, txt=f"Weight: {res.get('weight_kg', res.get('weight_input', 'N/A'))} kg")
+    
+    # Use clean_text() on EVERY string you write
+    age_gender = clean_text(f"Age: {res.get('age')} | Gender: {res.get('gender')}")
+    weight = clean_text(f"Weight: {res.get('weight_kg', res.get('weight_input', 'N/A'))} kg")
+    
+    pdf.cell(95, 10, txt=age_gender)
+    pdf.cell(95, 10, txt=weight)
     pdf.ln(8)
-    pdf.cell(0, 10, txt=f"Vitals: BP {res.get('sys_bp')}/{res.get('dia_bp')}  |  HR {res.get('hr')}  |  RR {res.get('resp_rate')}  |  SpO2 {res.get('o2_sat')}%", ln=1)
+    
+    vitals_txt = clean_text(f"Vitals: BP {res.get('sys_bp')}/{res.get('dia_bp')}  |  HR {res.get('hr')}  |  RR {res.get('resp_rate')}  |  SpO2 {res.get('o2_sat')}%")
+    pdf.cell(0, 10, txt=vitals_txt, ln=1)
     pdf.ln(5)
 
     # --- 2. Risk Scores ---
@@ -124,23 +149,24 @@ def create_pdf_report(res, ai_assessment, alerts_list):
     pdf.cell(0, 10, txt="2. Risk Stratification Analysis", ln=1, fill=True)
     pdf.set_font("Arial", size=11)
     pdf.ln(2)
-    pdf.cell(95, 10, txt=f"- Bleeding Risk: {res.get('bleeding_risk'):.1f}%")
-    pdf.cell(95, 10, txt=f"- Sepsis Score (qSOFA): {res.get('sepsis_risk')}")
+    pdf.cell(95, 10, txt=clean_text(f"- Bleeding Risk: {res.get('bleeding_risk'):.1f}%"))
+    pdf.cell(95, 10, txt=clean_text(f"- Sepsis Score (qSOFA): {res.get('sepsis_risk')}"))
     pdf.ln(6)
-    pdf.cell(95, 10, txt=f"- AKI Risk: {res.get('aki_risk')}%")
-    pdf.cell(95, 10, txt=f"- Shock Index: {res.get('shock_index'):.2f}")
+    pdf.cell(95, 10, txt=clean_text(f"- AKI Risk: {res.get('aki_risk')}%"))
+    pdf.cell(95, 10, txt=clean_text(f"- Shock Index: {res.get('shock_index'):.2f}"))
     pdf.ln(10)
 
-    # --- 3. CLINICAL ALERTS (NEW SECTION) ---
+    # --- 3. CLINICAL ALERTS ---
     pdf.set_font("Arial", 'B', 12)
-    pdf.set_text_color(255, 0, 0) # RED COLOR for Danger
+    pdf.set_text_color(255, 0, 0) # RED
     pdf.cell(0, 10, txt="3. CRITICAL CLINICAL ALERTS & PROTOCOLS", ln=1, fill=True)
     pdf.set_font("Arial", 'B', 11)
     
     if alerts_list:
         for item in alerts_list:
-            # Bullet point format
-            pdf.multi_cell(0, 8, txt=f"  {item}")
+            # SANITIZE the alert text before printing
+            safe_item = clean_text(item)
+            pdf.multi_cell(0, 8, txt=f"  {safe_item}")
     else:
         pdf.set_text_color(0, 128, 0) # Green
         pdf.cell(0, 10, txt="  No critical alerts detected. Patient appears stable.", ln=1)
@@ -154,9 +180,10 @@ def create_pdf_report(res, ai_assessment, alerts_list):
         pdf.cell(0, 10, txt="4. AI Narrative Assessment", ln=1, fill=True)
         pdf.set_font("Arial", size=11)
         pdf.ln(2)
-        pdf.multi_cell(0, 6, txt=ai_assessment)
+        # SANITIZE the AI text too
+        pdf.multi_cell(0, 6, txt=clean_text(ai_assessment))
     
-    return pdf.output(dest='S').encode('latin-1')  
+    return pdf.output(dest='S').encode('latin-1', 'replace') # 'replace' handles any stragglers
 # ---------------------------------------------------------
 # 1. PAGE CONFIGURATION
 # ---------------------------------------------------------
