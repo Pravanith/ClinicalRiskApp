@@ -365,18 +365,6 @@ def render_cover_page():
 # --- MODULE 1: RISK CALCULATOR (COMPLETE & FIXED) ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator")
-# --- TEMPORARY DEBUG BUTTON ---
-    if st.button("🛠️ DEBUG: Check Available AI Models"):
-        st.write("Querying Google API...")
-        try:
-            # This uses your existing API setup
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    st.code(f"'{m.name.replace('models/', '')}',") 
-        except Exception as e:
-            st.error(f"Error: {e}")
-    # -----------------------------
-    
     # --- 1. INITIALIZE DEFAULTS (Prevents "KeyError" crashes) ---
     defaults = {
         # Demographics & Vitals
