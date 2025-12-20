@@ -70,9 +70,9 @@ def extract_data_from_soap(note_text):
     """
     # Prioritize the "Flash" models from your list for speed
     candidate_models = [
-        'gemini-flash-latest',      # ✅ This maps to 1.5 Flash (High Quota)
-        'gemini-pro-latest',        # ✅ This maps to 1.5 Pro (High Intelligence)
-        'gemini-1.5-flash-latest',  # Fallback
+        'gemini-flash-latest',      # Primary (1.5 Flash)
+        'gemini-1.5-flash',         # Backup (Standard name)
+        'gemini-pro-latest',        # Backup (Pro)
     ]
 
     prompt = f"""
