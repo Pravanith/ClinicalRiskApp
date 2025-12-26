@@ -352,26 +352,32 @@ else:
     with st.sidebar:
         st.title("Navigation")
         menu = st.radio("Select Module", ["Risk Calculator", "Patient History (SQL)", "Live Dashboard", "Batch Analysis (CSV)", "Medication Checker", "📚 Medical Glossary", "🧠 AI Clinical Consultant"])
-    
-    if menu == "Risk Calculator": render_risk_calculator()
-    elif menu == "Patient History (SQL)": render_history_sql()
-    elif menu == "Live Dashboard": render_dashboard()
-    elif menu == "Batch Analysis (CSV)": render_batch_analysis()
-    elif menu == "Medication Checker": render_medication_checker()
-    elif menu == "📚 Medical Glossary": render_chatbot()
-    elif menu == "🧠 AI Clinical Consultant": render_ai_diagnostician()
-  # ---------------------------------------------------------
-    # DEBUG: ADMIN PANEL (Only visible if URL has ?admin=true)
-    # ---------------------------------------------------------
-    # Check if the URL is https://.../?admin=true
-    if "admin" in st.query_params: 
-        st.sidebar.divider()
-        st.sidebar.subheader("🔧 Admin Mode")
-        if st.sidebar.button("⚡ Force Retrain Model"):
-            with st.spinner("Training new model on Cloud Server..."):
-                try:
-                    import train_model
-                    train_model.train()
-                    st.success("✅ Model Retrained! Reboot App now.")
-                except Exception as e:
-                    st.error(f"Failed: {e}") 
+        st.info("v3.0 - AI Integrated")
+
+    if menu == "Risk Calculator":
+        render_risk_calculator()
+    elif menu == "Patient History (SQL)":
+        render_history_sql()
+    elif menu == "Live Dashboard":
+        render_dashboard()
+    elif menu == "Batch Analysis (CSV)":
+        render_batch_analysis()
+    elif menu == "Medication Checker":
+        render_medication_checker()
+    elif menu == "📚 Medical Glossary":
+        render_chatbot()
+    elif menu == "🧠 AI Clinical Consultant":
+        render_ai_diagnostician()
+
+    # --- ADMIN PANEL ---
+    if "admin" in st.query_params: 
+        st.sidebar.divider()
+        st.sidebar.subheader("🔧 Admin Mode")
+        if st.sidebar.button("⚡ Force Retrain Model"):
+            with st.spinner("Training new model on Cloud Server..."):
+                try:
+                    import train_model
+                    train_model.train()
+                    st.success("✅ Model Retrained! Reboot App now.")
+                except Exception as e:
+                    st.error(f"Failed: {e}")
