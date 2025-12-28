@@ -31,11 +31,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🏥 Clinical Risk Monitor: High-Acuity IOP Dashboard")
-st.markdown("""
-**Objective:** A Measurement-Based Care (MBC) tool to predict **patient deterioration** and **readmission risk** in outpatient settings.
-* **Key Features:** Medication Non-Adherence Tracking, Symptom Severity Scoring (PHQ-9/GAD-7), and Risk Stratification.
-* **Tech Stack:** Python, Machine Learning (Scikit-Learn), Streamlit.
-""")
+
 st.divider()
 
 # Helper for file timestamps
