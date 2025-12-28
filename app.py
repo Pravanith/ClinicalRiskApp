@@ -31,7 +31,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🏥 Clinical Risk Monitor: High-Acuity IOP Dashboard")
-
+st.divider()
 
 # Helper for file timestamps
 def get_timestamp():
