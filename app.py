@@ -74,6 +74,18 @@ def render_risk_calculator():
     # --- INPUTS CONTAINER ---
     with st.container(border=True):
         st.markdown("#### 📝 Patient Data Entry")
+        st.markdown("#### 🪄 AI Smart-Fill")
+raw_note = st.text_area("Paste a patient description to auto-fill the form:", 
+                        placeholder="e.g., A 72 year old female, 140 lbs, BP is 150/95, HR 92, on anticoagulants.")
+
+if st.button("✨ Parse and Fill"):
+    if raw_note:
+        with st.spinner("AI is reading the note..."):
+            extracted = bk.parse_clinical_note(raw_note)
+            # Update the Session State
+            for key, val in extracted.items():
+                st.session_state[key] = val
+            st.rerun() # Refresh to update form values
         
         with st.form("risk_form"):
             
