@@ -431,3 +431,37 @@ def analyze_drug_interactions(drug_list):
         return model.generate_content(prompt).text
     except Exception as e:
         return f"Error: {str(e)}"
+import json
+
+def parse_clinical_note(text):
+    """
+    Uses Gemini to extract clinical values from unstructured text.
+    """
+    import google.generativeai as genai
+    import streamlit as st
+    
+    try:
+        # 1. Setup API and Model
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        # 2. Strict Prompting for JSON output
+        prompt = f"""
+        Extract clinical values from this medical note: "{text}"
+        Return ONLY a raw JSON object (no markdown, no backticks) with these exact keys: 
+        "age", "gender", "weight_input", "sys_bp", "dia_bp", "hr", "creat", "anticoagulant".
+        
+        Rules:
+        - Use 0 for missing numbers.
+        - Gender must be "Male" or "Female".
+        - anticoagulant must be true or false.
+        """
+        
+        response = model.generate_content(prompt)
+        # 3. Clean and Parse JSON
+        clean_json = response.text.strip().replace("```json", "").replace("```", "")
+        return json.loads(clean_json)
+    except Exception as e:
+        print(f"Extraction Error: {e}")
+        return {}
