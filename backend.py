@@ -6,16 +6,20 @@ import os
 import re
 import datetime
 import joblib
+import json
+import google.generativeai as genai
+import streamlit as st
+
+# ==========================================
+# 0. PII REDACTION (UNCHANGED)
+# ==========================================
 def redact_pii(text):
     """
     Sanitizes input to remove potential Patient Identifiers (Safe Harbor)
     before sending to an external LLM.
     """
-    # Redact names (e.g., Mr. Smith, Dr. Jones)
     text = re.sub(r'\b(Mr\.|Mrs\.|Ms\.|Dr\.)\s+[A-Z][a-z]+', '', text)
-    # Redact potential Medical Record Numbers (6+ digits)
     text = re.sub(r'\b\d{6,}\b', '', text)
-    # Redact Dates (simple pattern)
     text = re.sub(r'\d{2}/\d{2}/\d{4}', '', text)
     return text
 
@@ -27,10 +31,9 @@ except ImportError:
     INTERACTION_DB = {}
 
 # ==========================================
-# 1. DATABASE MANAGEMENT
+# 1. DATABASE MANAGEMENT (UNCHANGED)
 # ==========================================
 def get_db_connection():
-    # check_same_thread=False is crucial for Streamlit's multi-threaded environment
     return sqlite3.connect('clinical_data.db', check_same_thread=False)
 
 def init_db():
