@@ -433,13 +433,16 @@ def analyze_drug_interactions(drug_list):
         return f"Error: {str(e)}"
 
 def parse_unified_soap(raw_text):
-    """
-    Parses a single block of SOAP text into a structured dictionary.
-    """
+    
     import google.generativeai as genai
     import streamlit as st
     import json
     import re
+    # FIX: Explicitly call the key string from the secrets dictionary
+    if "GEMINI_API_KEY" not in st.secrets:
+        return {"error": "API Key missing from Streamlit Secrets"}
+        
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
