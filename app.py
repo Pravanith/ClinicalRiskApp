@@ -74,20 +74,27 @@ def render_cover_page():
 
 # --- MODULE 1: RISK CALCULATOR ---
 def render_risk_calculator():
-    st.subheader("Acute Risk Calculator")
-    with st.expander("🪄 AI SOAP Assistant (Auto-fill Form)", expanded=False):
-        soap_input = st.text_area("Paste Subjective/Objective notes here:", 
-                                 placeholder="e.g. 65yo Male, SBP 145/90, HR 88. Labs show Cr 1.4 and K 5.2...")
-        if st.button("Extract & Auto-fill"):
-            with st.spinner("Parsing clinical entities..."):
-                extracted_data = bk.parse_soap_note(soap_input)
-                if "error" not in extracted_data:
-                    # Store in session state to 'prime' the form
-                    st.session_state['soap_extraction'] = extracted_data
-                    st.success("Data extracted! Review the form below.")
+    # --- AI SOAP PARSER SECTION ---
+    with st.expander("📝 AI SOAP Auto-Fill", expanded=True):
+        c1, c2 = st.columns(2)
+        s_input = c1.text_area("Subjective (History, Symptoms)", height=100)
+        o_input = c2.text_area("Objective (Vitals, Labs, Exam)", height=100)
+        a_input = c1.text_area("Assessment (Diagnosis)", height=100)
+        p_input = c2.text_area("Plan (Interventions)", height=100)
+        
+        if st.button("🪄 Parse & Sync to Form", use_container_width=True):
+            with st.spinner("Analyzing text..."):
+                extracted = bk.parse_soap_note(s_input, o_input, a_input, p_input)
+                if "error" not in extracted:
+                    st.session_state['soap_extraction'] = extracted
+                    st.success("Form updated with extracted data!")
+                    st.rerun()
                 else:
-                    st.error(f"Extraction failed: {extracted_data['error']}")
+                    st.error(f"Error: {extracted['error']}")
 
+    # Form initialization using session state
+    ext = st.session_state.get('soap_extraction', {})
+    
     # --- FORM PRE-FILL LOGIC ---
     # Check if we have extracted data to pre-populate fields
     extracted = st.session_state.get('soap_extraction', {})
