@@ -692,33 +692,44 @@ if __name__ == "__main__":
 
 # Add to backend.py
 
-def parse_soap_note(raw_text):
+# Updated in backend.py
+
+def parse_soap_note(subjective, objective, assessment, plan):
     """
-    Uses Gemini to extract clinical vitals and labs from a SOAP note.
-    Returns a dictionary of mapped values.
+    Parses categorized SOAP notes into structured clinical data.
     """
     import google.generativeai as genai
     import streamlit as st
     import json
+    import re
 
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.0-flash')
 
+        combined_text = f"S: {subjective}\nO: {objective}\nA: {assessment}\nP: {plan}"
+        
         prompt = f"""
-        Extract clinical data from this SOAP note: "{raw_text}"
+        Extract clinical data from this SOAP note:
+        ---
+        {combined_text}
+        ---
+        Return ONLY a JSON object with these exact keys:
+        "age" (int), "gender" (Male/Female), "sbp" (int), "dbp" (int), "hr" (int), 
+        "rr" (int), "temp_c" (float - convert F to C if needed), "spo2" (int), 
+        "creat" (float), "bun" (int), "k" (float), "glucose" (int), "wbc" (float), 
+        "hgb" (float), "plt" (int), "inr" (float),
+        "anticoagulant" (bool), "liver_disease" (bool), "heart_failure" (bool), "gi_bleed" (bool)
         
-        Return ONLY a JSON object with these exact keys (use 0 if not found):
-        "age", "gender", "sbp", "dbp", "hr", "rr", "temp", "spo2", 
-        "creat", "bun", "k", "glucose", "wbc", "hgb", "plt", "inr"
-        
-        Note: Convert 'gender' to 'Male' or 'Female'.
+        If a value is missing or described qualitatively (e.g., 'normal'), provide a logical clinical default or 0.
         """
         
         response = model.generate_content(prompt)
-        # Extract JSON from response text (handles markdown backticks if present)
-        json_str = re.search(r'\{.*\}', response.text, re.DOTALL).group()
-        return json.loads(json_str)
+        # Regex to ensure we only get the JSON block
+        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group())
+        return {"error": "Could not parse AI response"}
     except Exception as e:
         return {"error": str(e)}
