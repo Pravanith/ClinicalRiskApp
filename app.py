@@ -70,26 +70,21 @@ def render_cover_page():
 
 # --- MODULE 1: RISK CALCULATOR ---
 def render_risk_calculator():
-    # --- 1. THE MASTER AI BOX ---
+    # --- 1. MASTER AI BOX ---
     with st.container(border=True):
         st.markdown("#### 🤖 Master AI SOAP Parser")
-        raw_soap = st.text_area(
-            "Paste your complete SOAP note, triage note, or clinical summary here:",
-            placeholder="Example: 72yo F with history of HF and Afib on Eliquis. BP 148/92, Temp 101.3F...",
-            height=150
-        )
-        if st.button("✨ Auto-Fill Calculator", type="secondary", use_container_width=True):
+        raw_soap = st.text_area("Paste clinical note here:", height=100)
+        if st.button("✨ Auto-Fill Form", use_container_width=True):
             if raw_soap:
-                with st.spinner("AI is extracting clinical values..."):
+                with st.spinner("Analyzing..."):
                     extracted = bk.parse_unified_soap(raw_soap)
                     if "error" not in extracted:
                         st.session_state['soap_data'] = extracted
-                        st.success("Calculator values updated!")
+                        st.success("Values synced!")
                         st.rerun()
                     else:
-                        st.error("AI couldn't read the note. Please check your API key.")
+                        st.error(extracted['error'])
 
-    # Retrieve data from session state (defaults to empty dict)
     ext = st.session_state.get('soap_data', {})
     
     # --- INPUTS CONTAINER ---
