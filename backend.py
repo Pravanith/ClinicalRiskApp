@@ -433,42 +433,43 @@ def analyze_drug_interactions(drug_list):
         return f"Error: {str(e)}"
 
 def parse_unified_soap(raw_text):
-    
     import google.generativeai as genai
     import streamlit as st
     import json
     import re
-    # FIX: Explicitly call the key string from the secrets dictionary
-    if "GEMINI_API_KEY" not in st.secrets:
-        return {"error": "API Key missing from Streamlit Secrets"}
-        
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
+    # 1. AUTHENTICATION CHECK
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.0-flash')
+    except Exception as auth_err:
+        print(f"AUTH ERROR: {auth_err}")
+        return {"error": "Check secrets.toml or API Key permissions."}
 
-        prompt = f"""
-        Extract clinical data from this medical note:
-        ---
-        {raw_text}
-        ---
-        Return ONLY a JSON object with these EXACT keys:
-        "age", "gender" (Male/Female), "sbp", "dbp", "hr", "rr", "temp_c", "spo2", 
-        "creat", "bun", "k", "glucose", "wbc", "hgb", "plt", "inr",
-        "anticoagulant" (bool), "liver_disease" (bool), "heart_failure" (bool), "gi_bleed" (bool),
-        "nsaid" (bool), "active_chemo" (bool), "diuretic" (bool), "acei" (bool), "insulin" (bool),
-        "hba1c_high" (bool), "altered_mental" (bool)
-        
-        Rules:
-        1. Convert Fahrenheit to Celsius if needed.
-        2. Use 0 or false for missing values.
-        3. Interpret medications (e.g., 'Eliquis' = anticoagulant: true).
-        """
-        
+    # 2. TOUGH EXTRACTION PROMPT
+    prompt = f"""
+    Parse this medical shorthand into a JSON object:
+    "{raw_text}"
+    
+    Keys: "age", "gender", "sbp", "dbp", "hr", "rr", "temp_c", "spo2", "creat", "k", "glucose",
+    "anticoagulant" (bool), "diuretic" (bool), "acei" (bool), "gi_bleed" (bool), "altered_mental" (bool)
+    
+    Rules:
+    - Convert Fahrenheit to Celsius.
+    - If medications like 'Coumadin', 'Lasix', or 'Zestril' are named, set their bools to true.
+    - 'Melena' = gi_bleed: true. 'Lethargic' = altered_mental: true.
+    """
+
+    try:
         response = model.generate_content(prompt)
+        # Use regex to find the JSON block in case the AI adds text
         json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
-        return json.loads(json_match.group()) if json_match else {"error": "Failed to parse"}
+        if json_match:
+            return json.loads(json_match.group())
+        else:
+            print(f"AI RESPONSE ERROR: {response.text}")
+            return {"error": "AI returned non-JSON data."}
     except Exception as e:
+        print(f"RUNTIME ERROR: {e}")
         return {"error": str(e)}
