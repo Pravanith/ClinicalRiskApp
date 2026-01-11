@@ -438,11 +438,11 @@ def parse_unified_soap(raw_text):
     import json
     import re
 
-    # 1. DIRECT KEY ACCESS
+    # 1. AUTHENTICATION & KEY CHECK
     try:
-        # Check if key exists in secrets
+        # Check if the secret exists
         if "GEMINI_API_KEY" not in st.secrets:
-            return {"error": "Key 'GEMINI_API_KEY' not found in .streamlit/secrets.toml"}
+            return {"error": "Key missing. Ensure .streamlit/secrets.toml is correct."}
         
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
@@ -450,29 +450,31 @@ def parse_unified_soap(raw_text):
     except Exception as e:
         return {"error": f"Auth Failure: {str(e)}"}
 
-    # 2. THE ULTIMATE SHORTHAND PROMPT
+    # 2. TOUGH EXTRACTION PROMPT
     prompt = f"""
-    Act as a clinical scribe. Extract data from this shorthand into JSON:
+    Act as a medical scribe. Extract data from this shorthand into a JSON object:
     "{raw_text}"
     
-    Required JSON Keys: 
-    "age", "gender", "sbp", "dbp", "hr", "rr", "temp_c", "spo2", "creat", "k", "glucose",
-    "anticoagulant" (bool), "diuretic" (bool), "acei" (bool), "gi_bleed" (bool), "altered_mental" (bool)
+    Required Keys: 
+    "age" (int), "gender" (Male/Female), "sbp" (int), "dia_bp" (int), "hr" (int), 
+    "resp_rate" (int), "temp_c" (float), "o2_sat" (int), "creat" (float), "bun" (int), 
+    "potassium" (float), "glucose" (int), "wbc" (float), "hgb" (float), "platelets" (int), 
+    "inr" (float), "anticoag" (bool), "liver_disease" (bool), "heart_failure" (bool), 
+    "gi_bleed" (bool), "nsaid" (bool), "active_chemo" (bool), "diuretic" (bool), 
+    "acei" (bool), "insulin" (bool), "hba1c_high" (bool), "altered_mental" (bool)
     
     Mapping Rules:
-    - Convert Fahrenheit to Celsius (Crucial).
-    - Coumadin/Eliquis/Xarelto -> anticoagulant: true.
-    - Lasix/HCTZ -> diuretic: true.
-    - Zestril/Lisinopril/Cozaar -> acei: true.
-    - Melena/Hematochezia -> gi_bleed: true.
-    - Lethargic/Confused -> altered_mental: true.
+    - Convert Fahrenheit to Celsius (e.g., 103F -> 39.4).
+    - Map meds: Coumadin/Eliquis -> anticoag: true; Lasix -> diuretic: true; Zestril -> acei: true.
+    - Map signs: Melena -> gi_bleed: true; Lethargic -> altered_mental: true.
     """
 
     try:
         response = model.generate_content(prompt)
-        # Use regex to strip any conversational text the AI might add
-        json_str = re.search(r'\{.*\}', response.text, re.DOTALL).group()
-        return json.loads(json_str)
+        # Use regex to find the JSON block only
+        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group())
+        return {"error": "AI returned unformatted text."}
     except Exception as e:
-        # This will show you the ACTUAL error from the Gemini API
-        return {"error": f"API Runtime Error: {str(e)}"}
+        return {"error": f"AI Runtime Error: {str(e)}"}
