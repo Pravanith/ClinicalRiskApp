@@ -75,6 +75,22 @@ def render_cover_page():
 # --- MODULE 1: RISK CALCULATOR ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator")
+    with st.expander("🪄 AI SOAP Assistant (Auto-fill Form)", expanded=False):
+        soap_input = st.text_area("Paste Subjective/Objective notes here:", 
+                                 placeholder="e.g. 65yo Male, SBP 145/90, HR 88. Labs show Cr 1.4 and K 5.2...")
+        if st.button("Extract & Auto-fill"):
+            with st.spinner("Parsing clinical entities..."):
+                extracted_data = bk.parse_soap_note(soap_input)
+                if "error" not in extracted_data:
+                    # Store in session state to 'prime' the form
+                    st.session_state['soap_extraction'] = extracted_data
+                    st.success("Data extracted! Review the form below.")
+                else:
+                    st.error(f"Extraction failed: {extracted_data['error']}")
+
+    # --- FORM PRE-FILL LOGIC ---
+    # Check if we have extracted data to pre-populate fields
+    extracted = st.session_state.get('soap_extraction', {})
     
     # --- INPUTS CONTAINER ---
     with st.container(border=True):
