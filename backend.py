@@ -6,19 +6,16 @@ import os
 import re
 import datetime
 import joblib
-import json
-import google.generativeai as genai
-
-# ==========================================
-# 0. PII REDACTION (UNCHANGED)
-# ==========================================
 def redact_pii(text):
     """
     Sanitizes input to remove potential Patient Identifiers (Safe Harbor)
     before sending to an external LLM.
     """
+    # Redact names (e.g., Mr. Smith, Dr. Jones)
     text = re.sub(r'\b(Mr\.|Mrs\.|Ms\.|Dr\.)\s+[A-Z][a-z]+', '', text)
+    # Redact potential Medical Record Numbers (6+ digits)
     text = re.sub(r'\b\d{6,}\b', '', text)
+    # Redact Dates (simple pattern)
     text = re.sub(r'\d{2}/\d{2}/\d{4}', '', text)
     return text
 
@@ -30,9 +27,10 @@ except ImportError:
     INTERACTION_DB = {}
 
 # ==========================================
-# 1. DATABASE MANAGEMENT (UNCHANGED)
+# 1. DATABASE MANAGEMENT
 # ==========================================
 def get_db_connection():
+    # check_same_thread=False is crucial for Streamlit's multi-threaded environment
     return sqlite3.connect('clinical_data.db', check_same_thread=False)
 
 def init_db():
@@ -94,15 +92,13 @@ def load_bleeding_model():
     model_file = "clinical_pipeline.pkl"
     if os.path.exists(model_file):
         try:
+            # Loads the Pipeline (Preprocessor + Model)
             pipeline = joblib.load(model_file)
             return pipeline
         except Exception as e:
             print(f"⚠️ Error: {e}")
             return HeuristicFallbackModel()
     return HeuristicFallbackModel()
-
-BLEEDING_MODEL = load_bleeding_model()
-
 # ==========================================
 # 3. CLINICAL CALCULATORS (LOGIC)
 # ==========================================
@@ -153,6 +149,7 @@ def calculate_sirs_score(temp_c, hr, resp_rate, wbc):
 # 4. INTERACTION CHECKER
 # ==========================================
 def normalize_text(text):
+    """Simple normalization to handle slight variations in drug names"""
     if not isinstance(text, str): return ""
     return text.lower().strip()
 
@@ -163,97 +160,12 @@ def check_interaction(d1, d2):
     if (d1_clean, d2_clean) in INTERACTION_DB: return INTERACTION_DB[(d1_clean, d2_clean)]
     if (d2_clean, d1_clean) in INTERACTION_DB: return INTERACTION_DB[(d2_clean, d1_clean)]
     return None
-# ==========================================
-# 5. SOAP NOTE PARSER (AI AUTO-FILL ENGINE)
-# ==========================================
-
-def regex_extract_soap(text):
-    """
-    Lightweight local extraction fallback if AI fails.
-    """
-    sections = {
-        "subjective": "",
-        "objective": "",
-        "assessment": "",
-        "plan": ""
-    }
-
-    patterns = {
-        "subjective": r"(subjective:|s:)(.*?)(objective:|o:|assessment:|a:|plan:|p:|$)",
-        "objective": r"(objective:|o:)(.*?)(assessment:|a:|plan:|p:|$)",
-        "assessment": r"(assessment:|a:)(.*?)(plan:|p:|$)",
-        "plan": r"(plan:|p:)(.*)$"
-    }
-
-    for key, pat in patterns.items():
-        match = re.search(pat, text, re.IGNORECASE | re.DOTALL)
-        if match:
-            sections[key] = match.group(2).strip()
-
-    return sections
-
-
-def ai_parse_soap(text):
-    """
-    Gemini-powered SOAP extractor.
-    Returns structured JSON.
-    """
-    try:
-        safe_text = redact_pii(text)
-
-        prompt = f"""
-        You are a clinical documentation AI.
-
-        Extract the following from this note:
-        1. Subjective
-        2. Objective
-        3. Assessment
-        4. Plan
-
-        Output STRICT JSON:
-
-        {{
-            "subjective": "...",
-            "objective": "...",
-            "assessment": "...",
-            "plan": "..."
-        }}
-
-        Clinical Note:
-        {safe_text}
-        """
-
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        response = model.generate_content(prompt)
-
-        # Try JSON parse
-        content = response.text.strip()
-        content = content.replace("```json", "").replace("```", "")
-        return json.loads(content)
-
-    except Exception as e:
-        print("⚠️ AI SOAP parse failed:", e)
-        return None
-
-
-def parse_soap_note(note_text):
-    """
-    Master SOAP parser.
-    Tries Gemini → Falls back to regex → Always returns valid structure.
-    """
-    ai_result = ai_parse_soap(note_text)
-    if ai_result and all(k in ai_result for k in ["subjective", "objective", "assessment", "plan"]):
-        return ai_result
-
-    # Fallback
-    return regex_extract_soap(note_text)
-
 
 # ==========================================
-# 6. KNOWLEDGE BASE & CHATBOT LOGIC
+# 5. KNOWLEDGE BASE & CHATBOT LOGIC
 # ==========================================
-
 KNOWLEDGE_BASE = {
+    # --- CARDIOLOGY ---
         "mi": "Myocardial Infarction (Heart Attack). Blockage of blood flow. STEMI is critical. Symptoms: Chest pressure, radiating pain.",
         "heart attack": "Myocardial Infarction (MI). Emergency. Protocol: MONA (Morphine, O2, Nitro, Aspirin).",
         "hypertension": "High Blood Pressure (>130/80). 'The Silent Killer'. Risk of Stroke/MI/Kidney Failure.",
@@ -437,260 +349,88 @@ KNOWLEDGE_BASE = {
         "nkda": "No Known Drug Allergies."
 }
 
-
 def chatbot_response(text):
     text = text.lower().strip()
-
-    # 1. Local KB lookup
+    
+    # 1. Local Search
     for key, value in KNOWLEDGE_BASE.items():
         if key in text:
-            return f"📚 {value}"
+            return f"**📚 GLOSSARY MATCH ({key.upper()}):**\n{value}"
 
-    # 2. Gemini fallback
+    # 2. Fallback to AI
     try:
-        safe_text = redact_pii(text)
-
+        import google.generativeai as genai
+        import streamlit as st
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        
         prompt = f"""
-        Define this medical term in simple language (max 25 words):
-        "{safe_text}"
-
-        If not medical, say: "Not a medical term."
+        Define the medical term: "{text}".
+        Keep it concise (under 30 words).
+        If not medical, say "Term not recognized."
         """
-
-        model = genai.GenerativeModel("gemini-2.0-flash")
         response = model.generate_content(prompt)
-        return response.text
-
-    except Exception as e:
-        return "AI unavailable. Please try again later."
-
-# ==========================================
-# 7. GEMINI CONFIGURATION
-# ==========================================
-
-def configure_gemini(api_key):
-    genai.configure(api_key=api_key)
-
+        return f"**🧠 AI DEFINITION:**\n{response.text}"
+    except:
+        return "ℹ️ Term not found in Glossary and AI is unavailable."
 
 # ==========================================
-# 8. AI CONSULTANTS (GEMINI)
+# 6. AI CONSULTANTS (GEMINI)
 # ==========================================
-
 def consult_ai_doctor(role, user_input, patient_context=None):
     try:
+        # 1. Redact PII for Privacy/HIPAA Compliance
         safe_input = redact_pii(user_input)
-
+        
+        # 2. Configure Model
+        genai.configure(api_key=st.secrets)
         model = genai.GenerativeModel('gemini-2.0-flash')
-
+        
+        # 3. Chain-of-Thought Prompting (Higher reliability)
         if role == 'risk_assessment':
             prompt = f"""
             Role: Senior ICU Consultant.
             Context: {patient_context}
-            Query: {safe_input}
-
-            Steps:
-            1. Analyze hemodynamic stability.
-            2. Assess bleeding/AKI/sepsis risk.
-            3. Recommend 3 prioritized actions.
+            User Query: {safe_input}
+            
+            Instructions:
+            1. First, analyze the hemodynamic stability (MAP, Shock Index).
+            2. Second, cross-reference active meds with the bleeding risk score.
+            3. Finally, recommend 3 specific, prioritized clinical actions.
+            4. Cite relevant guidelines (e.g., KDIGO, Surviving Sepsis) where applicable.
             """
         else:
-            prompt = f"Medical consult: {safe_input}"
+            prompt = f"Expert Medical Consult. Query: {safe_input}. Provide differential diagnosis."
 
         response = model.generate_content(prompt)
         return response.text
-
     except Exception as e:
         return f"System Error: {str(e)}"
 
-
 def generate_discharge_summary(patient_data):
+    import google.generativeai as genai
+    import streamlit as st
     try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.0-flash')
-        prompt = f"Write a discharge summary for: {patient_data}"
+        prompt = f"Write a discharge summary for a patient with: {patient_data}"
         return model.generate_content(prompt).text
     except Exception as e:
         return f"Error: {str(e)}"
-
 
 def analyze_drug_interactions(drug_list):
+    import google.generativeai as genai
+    import streamlit as st
     try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.0-flash')
-        prompt = f"Analyze drug interactions: {', '.join(drug_list)}"
+        prompt = f"Analyze drug interactions for: {', '.join(drug_list)}. List mechanism and management."
         return model.generate_content(prompt).text
     except Exception as e:
         return f"Error: {str(e)}"
-
-
-# ==========================================
-# 9. API LAYER (FASTAPI)
-# ==========================================
-
-from fastapi import FastAPI
-from pydantic import BaseModel
-from typing import List
-
-app = FastAPI(title="Clinical AI Backend")
-
-init_db()
-
-
-class SOAPRequest(BaseModel):
-    note: str
-
-
-class ChatRequest(BaseModel):
-    text: str
-
-
-class DrugRequest(BaseModel):
-    drugs: List[str]
-
-
-class RiskRequest(BaseModel):
-    age: int
-    diuretic: bool
-    acei: bool
-    sys_bp: int
-    chemo: bool
-    creat: float
-    nsaid: bool
-    heart_failure: bool
-
-
-# ---------------- SOAP ----------------
-@app.post("/parse-soap")
-def parse_soap(req: SOAPRequest):
-    return parse_soap_note(req.note)
-
-
-# ---------------- Chatbot ----------------
-@app.post("/chat")
-def chat(req: ChatRequest):
-    return {"response": chatbot_response(req.text)}
-
-
-# ---------------- AI Doctor ----------------
-@app.post("/consult")
-def consult(req: ChatRequest):
-    return {"response": consult_ai_doctor("general", req.text)}
-
-
-# ---------------- Discharge ----------------
-@app.post("/discharge")
-def discharge(req: ChatRequest):
-    return {"summary": generate_discharge_summary(req.text)}
-
-
-# ---------------- Drug AI ----------------
-@app.post("/drug-ai")
-def drug_ai(req: DrugRequest):
-    return {"analysis": analyze_drug_interactions(req.drugs)}
-
-
-# ---------------- Risk Calculators ----------------
-@app.post("/aki-risk")
-def aki_risk(req: RiskRequest):
-    score = calculate_aki_risk(
-        req.age,
-        req.diuretic,
-        req.acei,
-        req.sys_bp,
-        req.chemo,
-        req.creat,
-        req.nsaid,
-        req.heart_failure
-    )
-    return {"aki_risk": score}
-
-
-# ---------------- History ----------------
-@app.get("/history")
-def history():
-    return fetch_history().to_dict(orient="records")
-
-
-@app.delete("/history")
-def clear():
-    clear_history()
-    return {"status": "cleared"}
-        
-# ==========================================
-# 10. BLEEDING RISK ML ENDPOINT
-# ==========================================
-
-class BleedingRequest(BaseModel):
-    age: int
-    high_bp: int
-    inr: float
-    anticoagulant: int
-
-
-@app.post("/bleeding-risk")
-def bleeding_risk(req: BleedingRequest):
-    try:
-        df = pd.DataFrame([{
-            "age": req.age,
-            "high_bp": req.high_bp,
-            "inr": req.inr,
-            "anticoagulant": req.anticoagulant
-        }])
-
-        risk = BLEEDING_MODEL.predict(df)[0]
-        return {"bleeding_risk": float(risk)}
-
-    except Exception as e:
-        return {"error": str(e)}
-
-
-# ==========================================
-# 11. DRUG–DRUG INTERACTION ENDPOINT
-# ==========================================
-
-class InteractionRequest(BaseModel):
-    drug1: str
-    drug2: str
-
-
-@app.post("/interaction-check")
-def interaction_check(req: InteractionRequest):
-    result = check_interaction(req.drug1, req.drug2)
-    if result:
-        return {"interaction": result}
-    return {"interaction": "No known interaction found."}
-
-
-# ==========================================
-# 12. SYSTEM HEALTH CHECK
-# ==========================================
-
-@app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "timestamp": datetime.datetime.now().isoformat(),
-        "db_exists": os.path.exists("clinical_data.db"),
-        "model_loaded": BLEEDING_MODEL is not None
-    }
-
-
-# ==========================================
-# 13. UTILITIES
-# ==========================================
-
-@app.get("/")
-def root():
-    return {"message": "Clinical AI Backend is running."}
-
-
-# ==========================================
-# 14. MAIN RUNNER
-# ==========================================
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("backend:app", host="0.0.0.0", port=8000, reload=True)
-
-# In backend.py
 
 def parse_unified_soap(raw_text):
     """
