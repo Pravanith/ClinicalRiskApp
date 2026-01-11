@@ -31,11 +31,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🏥 Clinical Risk Monitor: High-Acuity IOP Dashboard")
-st.markdown("""
-**Objective:** A Measurement-Based Care (MBC) tool to predict **patient deterioration** and **readmission risk** in outpatient settings.
-* **Key Features:** Medication Non-Adherence Tracking, Symptom Severity Scoring (PHQ-9/GAD-7), and Risk Stratification.
-* **Tech Stack:** Python, Machine Learning (Scikit-Learn), Streamlit.
-""")
+
 st.divider()
 
 # Helper for file timestamps
@@ -74,30 +70,27 @@ def render_cover_page():
 
 # --- MODULE 1: RISK CALCULATOR ---
 def render_risk_calculator():
-    # --- AI SOAP PARSER SECTION ---
-    with st.expander("📝 AI SOAP Auto-Fill", expanded=True):
-        c1, c2 = st.columns(2)
-        s_input = c1.text_area("Subjective (History, Symptoms)", height=100)
-        o_input = c2.text_area("Objective (Vitals, Labs, Exam)", height=100)
-        a_input = c1.text_area("Assessment (Diagnosis)", height=100)
-        p_input = c2.text_area("Plan (Interventions)", height=100)
-        
-        if st.button("🪄 Parse & Sync to Form", use_container_width=True):
-            with st.spinner("Analyzing text..."):
-                extracted = bk.parse_soap_note(s_input, o_input, a_input, p_input)
-                if "error" not in extracted:
-                    st.session_state['soap_extraction'] = extracted
-                    st.success("Form updated with extracted data!")
-                    st.rerun()
-                else:
-                    st.error(f"Error: {extracted['error']}")
+    # --- 1. THE MASTER AI BOX ---
+    with st.container(border=True):
+        st.markdown("#### 🤖 Master AI SOAP Parser")
+        raw_soap = st.text_area(
+            "Paste your complete SOAP note, triage note, or clinical summary here:",
+            placeholder="Example: 72yo F with history of HF and Afib on Eliquis. BP 148/92, Temp 101.3F...",
+            height=150
+        )
+        if st.button("✨ Auto-Fill Calculator", type="secondary", use_container_width=True):
+            if raw_soap:
+                with st.spinner("AI is extracting clinical values..."):
+                    extracted = bk.parse_unified_soap(raw_soap)
+                    if "error" not in extracted:
+                        st.session_state['soap_data'] = extracted
+                        st.success("Calculator values updated!")
+                        st.rerun()
+                    else:
+                        st.error("AI couldn't read the note. Please check your API key.")
 
-    # Form initialization using session state
-    ext = st.session_state.get('soap_extraction', {})
-    
-    # --- FORM PRE-FILL LOGIC ---
-    # Check if we have extracted data to pre-populate fields
-    extracted = st.session_state.get('soap_extraction', {})
+    # Retrieve data from session state (defaults to empty dict)
+    ext = st.session_state.get('soap_data', {})
     
     # --- INPUTS CONTAINER ---
     with st.container(border=True):
