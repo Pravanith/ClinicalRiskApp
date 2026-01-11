@@ -689,3 +689,36 @@ def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("backend:app", host="0.0.0.0", port=8000, reload=True)
+
+# Add to backend.py
+
+def parse_soap_note(raw_text):
+    """
+    Uses Gemini to extract clinical vitals and labs from a SOAP note.
+    Returns a dictionary of mapped values.
+    """
+    import google.generativeai as genai
+    import streamlit as st
+    import json
+
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.0-flash')
+
+        prompt = f"""
+        Extract clinical data from this SOAP note: "{raw_text}"
+        
+        Return ONLY a JSON object with these exact keys (use 0 if not found):
+        "age", "gender", "sbp", "dbp", "hr", "rr", "temp", "spo2", 
+        "creat", "bun", "k", "glucose", "wbc", "hgb", "plt", "inr"
+        
+        Note: Convert 'gender' to 'Male' or 'Female'.
+        """
+        
+        response = model.generate_content(prompt)
+        # Extract JSON from response text (handles markdown backticks if present)
+        json_str = re.search(r'\{.*\}', response.text, re.DOTALL).group()
+        return json.loads(json_str)
+    except Exception as e:
+        return {"error": str(e)}
