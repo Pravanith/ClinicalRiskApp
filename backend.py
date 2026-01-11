@@ -384,7 +384,7 @@ def consult_ai_doctor(role, user_input, patient_context=None):
         safe_input = redact_pii(user_input)
         
         # 2. Configure Model
-        genai.configure(api_key=st.secrets)
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         model = genai.GenerativeModel('gemini-2.0-flash')
         
         # 3. Chain-of-Thought Prompting (Higher reliability)
