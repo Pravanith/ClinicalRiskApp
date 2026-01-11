@@ -438,43 +438,35 @@ def parse_unified_soap(raw_text):
     import json
     import re
 
-    # 1. AUTHENTICATION & KEY CHECK
     try:
-        # Check if the secret exists
         if "GEMINI_API_KEY" not in st.secrets:
-            return {"error": "Key missing. Ensure .streamlit/secrets.toml is correct."}
+            return {"error": "API Key not found in secrets.toml"}
         
-        api_key = st.secrets["GEMINI_API_KEY"]
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
-    except Exception as e:
-        return {"error": f"Auth Failure: {str(e)}"}
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        # Using 1.5-flash to avoid the 2.0-flash quota limits you encountered
+        model = genai.GenerativeModel('gemini-1.5-flash')
 
-    # 2. TOUGH EXTRACTION PROMPT
-    prompt = f"""
-    Act as a medical scribe. Extract data from this shorthand into a JSON object:
-    "{raw_text}"
-    
-    Required Keys: 
-    "age" (int), "gender" (Male/Female), "sbp" (int), "dia_bp" (int), "hr" (int), 
-    "resp_rate" (int), "temp_c" (float), "o2_sat" (int), "creat" (float), "bun" (int), 
-    "potassium" (float), "glucose" (int), "wbc" (float), "hgb" (float), "platelets" (int), 
-    "inr" (float), "anticoag" (bool), "liver_disease" (bool), "heart_failure" (bool), 
-    "gi_bleed" (bool), "nsaid" (bool), "active_chemo" (bool), "diuretic" (bool), 
-    "acei" (bool), "insulin" (bool), "hba1c_high" (bool), "altered_mental" (bool)
-    
-    Mapping Rules:
-    - Convert Fahrenheit to Celsius (e.g., 103F -> 39.4).
-    - Map meds: Coumadin/Eliquis -> anticoag: true; Lasix -> diuretic: true; Zestril -> acei: true.
-    - Map signs: Melena -> gi_bleed: true; Lethargic -> altered_mental: true.
-    """
-
-    try:
+        prompt = f"""
+        Extract clinical data from this note into a JSON object:
+        "{raw_text}"
+        
+        Required JSON Keys (Use these exact names):
+        "age", "gender" (Male/Female), "sbp", "dbp", "hr", "rr", "temp_c", "spo2", 
+        "creat", "bun", "k", "glucose", "wbc", "hgb", "plt", "inr",
+        "anticoagulant" (bool), "liver_disease" (bool), "heart_failure" (bool), 
+        "gi_bleed" (bool), "nsaid" (bool), "active_chemo" (bool), "diuretic" (bool), 
+        "acei" (bool), "insulin" (bool), "hba1c_high" (bool), "altered_mental" (bool)
+        
+        Rules:
+        1. Convert Fahrenheit to Celsius (e.g., 101F -> 38.3).
+        2. 'Melena' or 'Hematochezia' -> gi_bleed: true.
+        3. 'Lethargic' or 'Confused' -> altered_mental: true.
+        4. If a drug like Coumadin, Lasix, or Lisinopril is mentioned, check the relevant box.
+        5. Return ONLY JSON.
+        """
+        
         response = model.generate_content(prompt)
-        # Use regex to find the JSON block only
-        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
-        if json_match:
-            return json.loads(json_match.group())
-        return {"error": "AI returned unformatted text."}
+        json_str = re.search(r'\{.*\}', response.text, re.DOTALL).group()
+        return json.loads(json_str)
     except Exception as e:
-        return {"error": f"AI Runtime Error: {str(e)}"}
+        return {"error": str(e)}
