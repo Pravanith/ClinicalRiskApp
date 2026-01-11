@@ -690,13 +690,11 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run("backend:app", host="0.0.0.0", port=8000, reload=True)
 
-# Add to backend.py
+# In backend.py
 
-# Updated in backend.py
-
-def parse_soap_note(subjective, objective, assessment, plan):
+def parse_unified_soap(raw_text):
     """
-    Parses categorized SOAP notes into structured clinical data.
+    Parses a single block of SOAP text into a structured dictionary.
     """
     import google.generativeai as genai
     import streamlit as st
@@ -708,28 +706,26 @@ def parse_soap_note(subjective, objective, assessment, plan):
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.0-flash')
 
-        combined_text = f"S: {subjective}\nO: {objective}\nA: {assessment}\nP: {plan}"
-        
         prompt = f"""
-        Extract clinical data from this SOAP note:
+        Extract clinical data from this medical note:
         ---
-        {combined_text}
+        {raw_text}
         ---
-        Return ONLY a JSON object with these exact keys:
-        "age" (int), "gender" (Male/Female), "sbp" (int), "dbp" (int), "hr" (int), 
-        "rr" (int), "temp_c" (float - convert F to C if needed), "spo2" (int), 
-        "creat" (float), "bun" (int), "k" (float), "glucose" (int), "wbc" (float), 
-        "hgb" (float), "plt" (int), "inr" (float),
-        "anticoagulant" (bool), "liver_disease" (bool), "heart_failure" (bool), "gi_bleed" (bool)
+        Return ONLY a JSON object with these EXACT keys:
+        "age", "gender" (Male/Female), "sbp", "dbp", "hr", "rr", "temp_c", "spo2", 
+        "creat", "bun", "k", "glucose", "wbc", "hgb", "plt", "inr",
+        "anticoagulant" (bool), "liver_disease" (bool), "heart_failure" (bool), "gi_bleed" (bool),
+        "nsaid" (bool), "active_chemo" (bool), "diuretic" (bool), "acei" (bool), "insulin" (bool),
+        "hba1c_high" (bool), "altered_mental" (bool)
         
-        If a value is missing or described qualitatively (e.g., 'normal'), provide a logical clinical default or 0.
+        Rules:
+        1. Convert Fahrenheit to Celsius if needed.
+        2. Use 0 or false for missing values.
+        3. Interpret medications (e.g., 'Eliquis' = anticoagulant: true).
         """
         
         response = model.generate_content(prompt)
-        # Regex to ensure we only get the JSON block
         json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
-        if json_match:
-            return json.loads(json_match.group())
-        return {"error": "Could not parse AI response"}
+        return json.loads(json_match.group()) if json_match else {"error": "Failed to parse"}
     except Exception as e:
         return {"error": str(e)}
