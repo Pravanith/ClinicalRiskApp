@@ -70,21 +70,22 @@ def render_cover_page():
 
 # --- MODULE 1: RISK CALCULATOR ---
 def render_risk_calculator():
-    # --- 1. MASTER AI BOX ---
+    # --- 1. THE MASTER AI BOX ---
     with st.container(border=True):
         st.markdown("#### 🤖 Master AI SOAP Parser")
-        raw_soap = st.text_area("Paste clinical note here:", height=100)
-        if st.button("✨ Auto-Fill Form", use_container_width=True):
+        raw_soap = st.text_area("Paste clinical note here:", height=150, 
+                                placeholder="82F, dizzy. BP 88/42, HR 125, T 103F...")
+        
+        if st.button("✨ Auto-Fill Calculator", type="secondary", use_container_width=True):
             if raw_soap:
-                with st.spinner("Analyzing..."):
+                with st.spinner("AI is extracting clinical values..."):
                     extracted = bk.parse_unified_soap(raw_soap)
                     if "error" not in extracted:
                         st.session_state['soap_data'] = extracted
-                        st.success("Values synced!")
+                        st.success("Form updated!")
                         st.rerun()
                     else:
-                        st.error(extracted['error'])
-
+                        st.error(f"Error: {extracted['error']}")
     ext = st.session_state.get('soap_data', {})
     
     # --- INPUTS CONTAINER ---
