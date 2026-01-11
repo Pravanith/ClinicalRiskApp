@@ -438,38 +438,41 @@ def parse_unified_soap(raw_text):
     import json
     import re
 
-    # 1. AUTHENTICATION CHECK
+    # 1. DIRECT KEY ACCESS
     try:
+        # Check if key exists in secrets
+        if "GEMINI_API_KEY" not in st.secrets:
+            return {"error": "Key 'GEMINI_API_KEY' not found in .streamlit/secrets.toml"}
+        
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.0-flash')
-    except Exception as auth_err:
-        print(f"AUTH ERROR: {auth_err}")
-        return {"error": "Check secrets.toml or API Key permissions."}
+    except Exception as e:
+        return {"error": f"Auth Failure: {str(e)}"}
 
-    # 2. TOUGH EXTRACTION PROMPT
+    # 2. THE ULTIMATE SHORTHAND PROMPT
     prompt = f"""
-    Parse this medical shorthand into a JSON object:
+    Act as a clinical scribe. Extract data from this shorthand into JSON:
     "{raw_text}"
     
-    Keys: "age", "gender", "sbp", "dbp", "hr", "rr", "temp_c", "spo2", "creat", "k", "glucose",
+    Required JSON Keys: 
+    "age", "gender", "sbp", "dbp", "hr", "rr", "temp_c", "spo2", "creat", "k", "glucose",
     "anticoagulant" (bool), "diuretic" (bool), "acei" (bool), "gi_bleed" (bool), "altered_mental" (bool)
     
-    Rules:
-    - Convert Fahrenheit to Celsius.
-    - If medications like 'Coumadin', 'Lasix', or 'Zestril' are named, set their bools to true.
-    - 'Melena' = gi_bleed: true. 'Lethargic' = altered_mental: true.
+    Mapping Rules:
+    - Convert Fahrenheit to Celsius (Crucial).
+    - Coumadin/Eliquis/Xarelto -> anticoagulant: true.
+    - Lasix/HCTZ -> diuretic: true.
+    - Zestril/Lisinopril/Cozaar -> acei: true.
+    - Melena/Hematochezia -> gi_bleed: true.
+    - Lethargic/Confused -> altered_mental: true.
     """
 
     try:
         response = model.generate_content(prompt)
-        # Use regex to find the JSON block in case the AI adds text
-        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
-        if json_match:
-            return json.loads(json_match.group())
-        else:
-            print(f"AI RESPONSE ERROR: {response.text}")
-            return {"error": "AI returned non-JSON data."}
+        # Use regex to strip any conversational text the AI might add
+        json_str = re.search(r'\{.*\}', response.text, re.DOTALL).group()
+        return json.loads(json_str)
     except Exception as e:
-        print(f"RUNTIME ERROR: {e}")
-        return {"error": str(e)}
+        # This will show you the ACTUAL error from the Gemini API
+        return {"error": f"API Runtime Error: {str(e)}"}
