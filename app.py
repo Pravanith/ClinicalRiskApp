@@ -147,7 +147,7 @@ def render_risk_calculator():
             
             altered_mental = st.checkbox("Altered Mental Status", value=ext.get('altered_mental', False))
 
-    if st.form_submit_button("🚀 Run Clinical Analysis", use_container_width=True):
+        if st.form_submit_button("🚀 Run Clinical Analysis", use_container_width=True):
 
     # --- LOGIC & RESULTS ---
     if submitted:
