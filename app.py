@@ -79,17 +79,17 @@ def render_risk_calculator():
     # --- 1. THE MASTER AI BOX ---with st.container(border=True):
     st.markdown("#### 🤖 Master AI SOAP Parser")
     raw_soap = st.text_area("Paste clinical note here:", height=100)
-        if st.button("✨ Auto-Fill Calculator", use_container_width=True):
-            if raw_soap:
-                with st.spinner("AI Extracting clinical values..."):
-                    # This calls your backend.py function
-                    res = bk.parse_unified_soap(raw_soap)
-                    if "error" not in res:
-                        st.session_state['soap_data'] = res
-                        st.success("Form updated successfully!")
-                        st.rerun() 
-                    else: 
-                        st.error(res['error'])
+    if st.button("✨ Auto-Fill Calculator", use_container_width=True):
+        if raw_soap:
+            with st.spinner("AI Extracting clinical values..."):
+                # This calls your backend.py function
+                res = bk.parse_unified_soap(raw_soap)
+                if "error" not in res:
+                    st.session_state['soap_data'] = res
+                    st.success("Form updated successfully!")
+                    st.rerun() 
+                else: 
+                    st.error(res['error'])
 
     # Retrieve data from session state (defaults to empty dict)
     ext = st.session_state.get('soap_data', {})
