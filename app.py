@@ -77,7 +77,7 @@ def render_risk_calculator():
 
     
     # --- 1. THE MASTER AI BOX ---with st.container(border=True):
-        st.markdown("#### 🤖 Master AI SOAP Parser")
+    st.markdown("#### 🤖 Master AI SOAP Parser")
         raw_soap = st.text_area("Paste clinical note here:", height=100)
         if st.button("✨ Auto-Fill Calculator", use_container_width=True):
             if raw_soap:
