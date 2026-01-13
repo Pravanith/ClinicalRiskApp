@@ -129,32 +129,42 @@ def check_interaction(d1, d2):
 # 4. AI CONSULTANTS & PARSER
 # ==========================================
 def parse_unified_soap(raw_text):
-    """Extracts clinical data from a SOAP note using Gemini 2.0 Flash."""
+    import google.generativeai as genai
+    import streamlit as st
+    import json
+    import re
+
     try:
+        # Check for key existence in secrets
+        if "GEMINI_API_KEY" not in st.secrets:
+            return {"error": "API Key missing in secrets.toml"}
+        
+        # FIX: Access the specific string key
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
+        
+        # 2026 Standard: Use Gemini 2.0 Flash
         model = genai.GenerativeModel('gemini-2.0-flash')
-        
+
         prompt = f"""
-        Extract clinical data from this medical note into a valid JSON object:
-        "{raw_text}"
+        Extract clinical data from this note into a JSON object: "{raw_text}"
         
-        Required JSON Keys (Return 0/false if missing):
-        "age", "gender" (Male/Female), "sbp", "dbp", "hr", "rr", "temp_c", "spo2", 
-        "creat", "bun", "k", "glucose", "wbc", "hgb", "plt", "inr", "lactate",
-        "anticoagulant" (bool), "liver_disease" (bool), "heart_failure" (bool), 
-        "gi_bleed" (bool), "nsaid" (bool), "active_chemo" (bool), "diuretic" (bool), 
-        "acei" (bool), "insulin" (bool), "hba1c_high" (bool), "altered_mental" (bool)
+        Required Keys:
+        "age", "gender", "sbp", "dbp", "hr", "rr", "temp_c", "spo2", "creat", 
+        "inr", "anticoagulant" (bool), "gi_bleed" (bool), "altered_mental" (bool)
         
-        Mapping Rules:
-        - Convert Fahrenheit to Celsius if needed.
-        - Map shorthand meds: Coumadin -> anticoagulant: true, Lasix -> diuretic: true.
-        - Map signs: Melena -> gi_bleed: true, Confusion -> altered_mental: true.
-        - Return ONLY the JSON block.
+        Rules:
+        1. Convert Fahrenheit to Celsius.
+        2. Map 'Melena' to gi_bleed: true.
+        3. Map 'Lethargic/Confused' to altered_mental: true.
+        4. Return ONLY the JSON block.
         """
+        
         response = model.generate_content(prompt)
+        # Use regex to isolate the JSON block
         json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
-        return json.loads(json_match.group()) if json_match else {"error": "Failed to parse JSON."}
+        return json.loads(json_match.group()) if json_match else {"error": "Invalid AI response format"}
+        
     except Exception as e:
         return {"error": str(e)}
 
