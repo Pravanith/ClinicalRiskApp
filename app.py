@@ -79,49 +79,50 @@ def render_risk_calculator():
         if st.button("✨ Auto-Fill Calculator", use_container_width=True):
             if raw_soap:
                 with st.spinner("AI Extracting clinical values..."):
-                    # This calls your backend.py function
                     res = bk.parse_unified_soap(raw_soap)
                     if "error" not in res:
                         st.session_state['soap_data'] = res
                         st.success("Form updated successfully!")
-                        st.rerun() # Refresh to show new values in the form
-                    else: 
-                        st.error(res['error'])
+                        st.rerun()
+                    else: st.error(res['error'])
 
     # Get data from session state (defaults to empty dict if nothing parsed yet)
     ext = st.session_state.get('soap_data', {})
 
     # --- 2. THE FORM WITH AI MAPPINGS ---
-    with st.form("risk_form"):
-        col_left, col_right = st.columns(2)
-        
-        with col_left:
-            st.markdown("##### 👤 Patient Profile")
-            l1, l2 = st.columns(2)
-            # Link 'age' and 'gender' to AI output
-            age = l1.number_input("Age", 0, 120, value=int(ext.get('age', 0)))
-            gender = l2.selectbox("Gender", ["Male", "Female"], index=0 if ext.get('gender') != 'Female' else 1)
+    def render_risk_calculator():
+    st.subheader("Acute Risk Calculator")
+    
+    # --- 1. THE MASTER AI BOX ---
+    with st.container(border=True):
+        st.markdown("#### 🤖 Master AI SOAP Parser")
+        raw_soap = st.text_area("Paste clinical note here:", height=100)
+        if st.button("✨ Auto-Fill Calculator", use_container_width=True):
+            if raw_soap:
+                with st.spinner("AI Extracting clinical values..."):
+                    res = bk.parse_unified_soap(raw_soap)
+                    if "error" not in res:
+                        st.session_state['soap_data'] = res
+                        st.success("Form updated successfully!")
+                        st.rerun()
+                    else: st.error(res['error'])
             
             st.markdown("##### 🩺 Vitals")
             v1, v2 = st.columns(2)
-            # Mapping sys_bp and dia_bp
             sys_bp = v1.number_input("Systolic BP", 0, 300, value=int(ext.get('sbp', 0)))
             dia_bp = v2.number_input("Diastolic BP", 0, 200, value=int(ext.get('dbp', 0)))
-            
             v3, v4 = st.columns(2)
             hr = v3.number_input("Heart Rate", 0, 300, value=int(ext.get('hr', 0)))
             resp_rate = v4.number_input("Resp Rate", 0, 60, value=int(ext.get('rr', 0)))
-            
             v5, v6 = st.columns(2)
-            # Ensure float conversion for Temperature
             temp_c = v5.number_input("Temp °C", 0.0, 45.0, value=float(ext.get('temp_c', 0.0)))
             o2_sat = v6.number_input("O2 Sat %", 0, 100, value=int(ext.get('spo2', 0)))
-
         with col_right:
             st.markdown("##### 🧪 Critical Labs")
             lab1, lab2 = st.columns(2)
             creat = lab1.number_input("Creatinine", 0.0, 20.0, value=float(ext.get('creat', 0.0)))
             bun = lab2.number_input("BUN", 0, 100, value=int(ext.get('bun', 0)))
+            inr = st.number_input("INR", 0.0, 10.0, value=float(ext.get('inr', 0.0)))
             
             lab3, lab4 = st.columns(2)
             potassium = lab3.number_input("Potassium", 0.0, 10.0, value=float(ext.get('k', 0.0)))
@@ -136,6 +137,10 @@ def render_risk_calculator():
             inr = lab8.number_input("INR", 0.0, 10.0, value=float(ext.get('inr', 0.0)))
 
             st.markdown("##### 📋 Medical History")
+            anticoag = st.checkbox("Anticoagulant Use", value=ext.get('anticoagulant', False))
+            gi_bleed = st.checkbox("History of GI Bleed", value=ext.get('gi_bleed', False))
+            altered_mental = st.checkbox("Altered Mental Status", value=ext.get('altered_mental', False))
+            
             h1, h2 = st.columns(2)
             # Map checkboxes to Booleans
             anticoag = h1.checkbox("Anticoagulant Use", value=ext.get('anticoagulant', False))
@@ -151,15 +156,10 @@ def render_risk_calculator():
 
     # --- LOGIC & RESULTS ---
     if submitted:
-        # --- FIX: Define weight_kg and bmi before using them below ---
-        # Capture weight conversion logic here
+        # Define weight_kg here so it's available for the rest of the function
         weight_kg = weight_input * 0.453592 if weight_scale == "lbs" else weight_input
+        bmi = weight_kg / ((height/100)**2) if height > 0 else 0.0
         
-        if height > 0:
-            bmi = weight_kg / ((height/100)**2)
-        else:
-            bmi = 0.0
-
         final_temp_c = temp_c
         
         # Calculate Hemodynamics
