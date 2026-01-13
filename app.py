@@ -235,7 +235,7 @@ def render_risk_calculator():
             'id': f"Patient-{age}-{int(sys_bp)}", 
             'age': age, 'gender': gender, 'weight': weight_kg,
             'sys_bp': sys_bp, 'dia_bp': dia_bp, 'hr': hr, 'resp_rate': resp_rate, 
-            'temp_c': temp_c, 'o2_sat': o2_sat, pain = st.slider("Pain Scale (0-10)", 0, 10, value=0),
+            'temp_c': temp_c, 'o2_sat': o2_sat, 'pain' = pain,
             'creat': creat, 'potassium': potassium, 'inr': inr, 'bun': bun,
             'wbc': wbc, 'hgb': hgb, 'platelets': platelets, 'lactate': lactate, 'glucose': glucose,
             'bleeding_risk': float(pred_bleeding), 'aki_risk': int(pred_aki),
