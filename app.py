@@ -93,36 +93,57 @@ def render_risk_calculator():
     def render_risk_calculator():
     st.subheader("Acute Risk Calculator")
     
-    # --- 1. THE MASTER AI BOX ---
-    with st.container(border=True):
+    # --- 1. THE MASTER AI BOX ---with st.container(border=True):
         st.markdown("#### 🤖 Master AI SOAP Parser")
         raw_soap = st.text_area("Paste clinical note here:", height=100)
         if st.button("✨ Auto-Fill Calculator", use_container_width=True):
             if raw_soap:
                 with st.spinner("AI Extracting clinical values..."):
+                    # This calls your backend.py function
                     res = bk.parse_unified_soap(raw_soap)
                     if "error" not in res:
                         st.session_state['soap_data'] = res
                         st.success("Form updated successfully!")
-                        st.rerun()
-                    else: st.error(res['error'])
+                        st.rerun() 
+                    else: 
+                        st.error(res['error'])
+
+    # Retrieve data from session state (defaults to empty dict)
+    ext = st.session_state.get('soap_data', {})
+
+    # --- 2. THE FORM ---
+    with st.form("risk_form"):
+        col_left, col_right = st.columns(2)
+        with col_left:
+            st.markdown("##### 👤 Patient Profile")
+            l1, l2 = st.columns(2)
+            # Map values to the 'ext' dictionary for AI Auto-Fill
+            age = l1.number_input("Age", 0, 120, value=int(ext.get('age', 0)))
+            gender = l2.selectbox("Gender", ["Male", "Female"], index=0 if ext.get('gender') != 'Female' else 1)
             
+            w_val, w_unit = st.columns([2, 1]) 
+            weight_input = w_val.number_input("Weight", 0.0, 400.0, value=float(ext.get('weight', 0.0)))
+            weight_scale = w_unit.selectbox("Unit", ["kg", "lbs"], key="w_unit")
+            height = st.number_input("Height (cm)", 0, 250, value=int(ext.get('height', 0)))
+
             st.markdown("##### 🩺 Vitals")
             v1, v2 = st.columns(2)
             sys_bp = v1.number_input("Systolic BP", 0, 300, value=int(ext.get('sbp', 0)))
             dia_bp = v2.number_input("Diastolic BP", 0, 200, value=int(ext.get('dbp', 0)))
+            
             v3, v4 = st.columns(2)
             hr = v3.number_input("Heart Rate", 0, 300, value=int(ext.get('hr', 0)))
             resp_rate = v4.number_input("Resp Rate", 0, 60, value=int(ext.get('rr', 0)))
+            
             v5, v6 = st.columns(2)
             temp_c = v5.number_input("Temp °C", 0.0, 45.0, value=float(ext.get('temp_c', 0.0)))
             o2_sat = v6.number_input("O2 Sat %", 0, 100, value=int(ext.get('spo2', 0)))
+
         with col_right:
             st.markdown("##### 🧪 Critical Labs")
             lab1, lab2 = st.columns(2)
             creat = lab1.number_input("Creatinine", 0.0, 20.0, value=float(ext.get('creat', 0.0)))
             bun = lab2.number_input("BUN", 0, 100, value=int(ext.get('bun', 0)))
-            inr = st.number_input("INR", 0.0, 10.0, value=float(ext.get('inr', 0.0)))
             
             lab3, lab4 = st.columns(2)
             potassium = lab3.number_input("Potassium", 0.0, 10.0, value=float(ext.get('k', 0.0)))
@@ -137,12 +158,7 @@ def render_risk_calculator():
             inr = lab8.number_input("INR", 0.0, 10.0, value=float(ext.get('inr', 0.0)))
 
             st.markdown("##### 📋 Medical History")
-            anticoag = st.checkbox("Anticoagulant Use", value=ext.get('anticoagulant', False))
-            gi_bleed = st.checkbox("History of GI Bleed", value=ext.get('gi_bleed', False))
-            altered_mental = st.checkbox("Altered Mental Status", value=ext.get('altered_mental', False))
-            
             h1, h2 = st.columns(2)
-            # Map checkboxes to Booleans
             anticoag = h1.checkbox("Anticoagulant Use", value=ext.get('anticoagulant', False))
             liver_disease = h2.checkbox("Liver Disease", value=ext.get('liver_disease', False))
             
@@ -152,7 +168,7 @@ def render_risk_calculator():
             
             altered_mental = st.checkbox("Altered Mental Status", value=ext.get('altered_mental', False))
 
-            submitted = st.form_submit_button("🚀 Run Clinical Analysis", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("🚀 Run Clinical Analysis", type="primary", use_container_width=True)
 
     # --- LOGIC & RESULTS ---
     if submitted:
