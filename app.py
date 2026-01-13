@@ -636,7 +636,7 @@ def render_risk_calculator():
     c_ai, c_txt = st.columns([1, 3])
     with c_ai:
         st.markdown("#### 🤖 AI Assessment")
-        if st.button("⚡ Consult AI"):
+        if st.button("⚡ Consult AI", key="risk_ai_consult_btn"):
             with st.spinner("Thinking..."):
                 ai_context = {
                     'age': res['age'], 'sbp': res['sys_bp'], 
