@@ -30,29 +30,42 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏥 Clinical Risk Monitor: High-Acuity IOP Dashboard")
+st.title("🏥 Clinical Risk Monitor")
 
 st.divider()
 
-# Helper for file timestamps
 def get_timestamp():
     return datetime.datetime.now().strftime("%Y%m%d_%H%M")
 
-# Initialize Database
+# Initialize Database & Load Model
 bk.init_db()
-
-# Load AI Model
 try:
     bleeding_model = bk.load_bleeding_model()
 except Exception as e:
     st.error(f"Model failed to load: {e}")
     st.stop()
 
-# Session State Initialization
-if 'patient_data' not in st.session_state:
-    st.session_state['patient_data'] = {}
-if 'entered_app' not in st.session_state:
-    st.session_state['entered_app'] = False
+# --- SESSION STATE INITIALIZATION (CRITICAL FOR AUTO-FILL) ---
+if 'patient_data' not in st.session_state: st.session_state['patient_data'] = {}
+if 'entered_app' not in st.session_state: st.session_state['entered_app'] = False
+
+# Function to safely initialize input keys if they don't exist
+def init_input_state(key, default_val):
+    if key not in st.session_state:
+        st.session_state[key] = default_val
+
+# List of all input keys to initialize
+input_defaults = {
+    'i_age': 0, 'i_gender': "Male", 'i_weight': 0.0, 'i_height': 0,
+    'i_sbp': 0, 'i_dbp': 0, 'i_hr': 0, 'i_rr': 0, 'i_temp': 0.0, 'i_o2': 0,
+    'i_creat': 0.0, 'i_bun': 0, 'i_k': 0.0, 'i_glu': 0, 'i_wbc': 0.0, 'i_hgb': 0.0,
+    'i_plt': 0, 'i_inr': 0.0, 'i_lac': 0.0,
+    'i_anticoag': False, 'i_liver': False, 'i_hf': False, 'i_gi': False,
+    'i_nsaid': False, 'i_chemo': False, 'i_diuretic': False, 'i_acei': False,
+    'i_insulin': False, 'i_a1c': False, 'i_ams': False
+}
+for k, v in input_defaults.items():
+    init_input_state(k, v)
 
 # ---------------------------------------------------------
 # 2. UI MODULES
@@ -68,91 +81,137 @@ def render_cover_page():
         st.session_state['entered_app'] = True
         st.rerun()
 
-# --- MODULE 1: RISK CALCULATOR ---
+# --- MODULE 1: RISK CALCULATOR (UPDATED WITH SOAP PARSER) ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator")
 
-    # Get data from session state (defaults to empty dict if nothing parsed yet)
-    ext = st.session_state.get('soap_data', {})
-
-    
-    # --- 1. THE MASTER AI BOX ---with st.container(border=True):
+    # --- NEW: MASTER AI SOAP PARSER SECTION ---
     st.markdown("#### 🤖 Master AI SOAP Parser")
-    raw_soap = st.text_area("Paste clinical note here:", height=100)
+    soap_text = st.text_area("Paste clinical note here:", height=100, placeholder="e.g. 65yo Male presenting with fever. BP 140/90, HR 110...")
+    
     if st.button("✨ Auto-Fill Calculator", use_container_width=True):
-        if raw_soap:
-            with st.spinner("AI Extracting clinical values..."):
-                # This calls your backend.py function
-                res = bk.parse_unified_soap(raw_soap)
-                if "error" not in res:
-                    st.session_state['soap_data'] = res
-                    st.success("Form updated successfully!")
-                    st.rerun() 
-                else: 
-                    st.error(res['error'])
+        if soap_text:
+            with st.spinner("Parsing clinical data..."):
+                extracted = bk.parse_clinical_note(soap_text)
+                if extracted:
+                    # Update Session State with extracted values
+                    if 'age' in extracted: st.session_state['i_age'] = int(extracted['age'])
+                    if 'gender' in extracted: st.session_state['i_gender'] = extracted['gender']
+                    if 'weight' in extracted: st.session_state['i_weight'] = float(extracted['weight'])
+                    if 'sys_bp' in extracted: st.session_state['i_sbp'] = int(extracted['sys_bp'])
+                    if 'dia_bp' in extracted: st.session_state['i_dbp'] = int(extracted['dia_bp'])
+                    if 'hr' in extracted: st.session_state['i_hr'] = int(extracted['hr'])
+                    if 'resp_rate' in extracted: st.session_state['i_rr'] = int(extracted['resp_rate'])
+                    if 'temp_c' in extracted: st.session_state['i_temp'] = float(extracted['temp_c'])
+                    if 'o2_sat' in extracted: st.session_state['i_o2'] = int(extracted['o2_sat'])
+                    if 'creat' in extracted: st.session_state['i_creat'] = float(extracted['creat'])
+                    if 'bun' in extracted: st.session_state['i_bun'] = int(extracted['bun'])
+                    if 'glucose' in extracted: st.session_state['i_glu'] = int(extracted['glucose'])
+                    if 'potassium' in extracted: st.session_state['i_k'] = float(extracted['potassium'])
+                    if 'wbc' in extracted: st.session_state['i_wbc'] = float(extracted['wbc'])
+                    if 'hgb' in extracted: st.session_state['i_hgb'] = float(extracted['hgb'])
+                    if 'platelets' in extracted: st.session_state['i_plt'] = int(extracted['platelets'])
+                    if 'anticoag' in extracted: st.session_state['i_anticoag'] = extracted['anticoag']
+                    if 'liver_disease' in extracted: st.session_state['i_liver'] = extracted['liver_disease']
+                    
+                    st.success("Data extracted and filled successfully!")
+                    st.rerun() # Rerun to refresh the widgets below
+                else:
+                    st.error("Could not parse data. Please check API Key or try manual entry.")
+        else:
+            st.warning("Please paste text first.")
 
-    # Retrieve data from session state (defaults to empty dict)
-    ext = st.session_state.get('soap_data', {})
+    # --- INPUTS CONTAINER ---
+    with st.container(border=True):
+        st.markdown("#### 📝 Patient Data Entry")
+        
+        with st.form("risk_form"):
+            
+            # Split Screen Layout
+            col_left, col_right = st.columns([1, 1], gap="medium")
+            
+            # --- LEFT COLUMN: Demographics & Vitals ---
+            with col_left:
+                st.markdown("##### 👤 Patient Profile")
+                l1, l2 = st.columns(2)
+                # NOTE: We use key='i_age' so the widget reads/writes to session state
+                age = l1.number_input("Age (Years)", min_value=0, max_value=120, key="i_age")
+                gender = l2.selectbox("Gender", ["Male", "Female"], key="i_gender")
+                
+                w_val, w_unit = st.columns([2, 1]) 
+                weight_input = w_val.number_input("Weight", 0.0, 400.0, key="i_weight")
+                weight_scale = w_unit.selectbox("Unit", ["kg", "lbs"], key="w_unit")
+                height = st.number_input("Height (cm)", 0, 250, key="i_height")
+                
+                # Weight Logic
+                weight_kg = weight_input * 0.453592 if weight_scale == "lbs" else weight_input
+                if height > 0:
+                    bmi = weight_kg / ((height/100)**2)
+                else:
+                    bmi = 0.0
 
-    # --- 2. THE FORM ---
-    with st.form("risk_form"):
-        col_left, col_right = st.columns(2)
-        with col_left:
-            st.markdown("##### 👤 Patient Profile")
-            l1, l2 = st.columns(2)
-            # Map values to the 'ext' dictionary for AI Auto-Fill
-            age = l1.number_input("Age", 0, 120, value=int(ext.get('age', 0)))
-            gender = l2.selectbox("Gender", ["Male", "Female"], index=0 if ext.get('gender') != 'Female' else 1)
-            
-            w_val, w_unit = st.columns([2, 1]) 
-            weight_input = w_val.number_input("Weight", 0.0, 400.0, value=float(ext.get('weight', 0.0)))
-            weight_scale = w_unit.selectbox("Unit", ["kg", "lbs"], key="w_unit")
-            height = st.number_input("Height (cm)", 0, 250, value=int(ext.get('height', 0)))
+                st.markdown("##### 🩺 Vitals")
+                v1, v2 = st.columns(2)
+                sys_bp = v1.number_input("Systolic BP (Normal: 110-120)", 0, 300, key="i_sbp")
+                dia_bp = v2.number_input("Diastolic BP (Normal: 70-80)", 0, 200, key="i_dbp")
+                
+                v3, v4 = st.columns(2)
+                hr = v3.number_input("Heart Rate (Normal: 60-100)", 0, 300, key="i_hr")
+                resp_rate = v4.number_input("Resp Rate (Normal: 12-20)", 0, 60, key="i_rr")
+                
+                v5, v6 = st.columns(2)
+                temp_c = v5.number_input("Temp °C (Normal: 36.5-37.5)", 0.0, 45.0, step=0.1, key="i_temp")
+                o2_sat = v6.number_input("O2 Sat % (Normal: >95%)", 0, 100, key="i_o2")
 
-            st.markdown("##### 🩺 Vitals")
-            v1, v2 = st.columns(2)
-            sys_bp = v1.number_input("Systolic BP", 0, 300, value=int(ext.get('sbp', 0)))
-            dia_bp = v2.number_input("Diastolic BP", 0, 200, value=int(ext.get('dbp', 0)))
-            
-            v3, v4 = st.columns(2)
-            hr = v3.number_input("Heart Rate", 0, 300, value=int(ext.get('hr', 0)))
-            resp_rate = v4.number_input("Resp Rate", 0, 60, value=int(ext.get('rr', 0)))
-            
-            v5, v6 = st.columns(2)
-            temp_c = v5.number_input("Temp °C", 0.0, 45.0, value=float(ext.get('temp_c', 0.0)))
-            o2_sat = v6.number_input("O2 Sat %", 0, 100, value=int(ext.get('spo2', 0)))
+            # --- RIGHT COLUMN: Labs & History ---
+            with col_right:
+                st.markdown("##### 🧪 Critical Labs")
+                
+                lab1, lab2 = st.columns(2)
+                creat = lab1.number_input("Creatinine (0.6-1.2 mg/dL)", 0.0, 20.0, key="i_creat")
+                bun = lab2.number_input("Blood Urea Nitrogen (7-20)", 0, 100, key="i_bun")
+                
+                lab3, lab4 = st.columns(2)
+                potassium = lab3.number_input("Potassium (3.5-5.0 mmol/L)", 0.0, 10.0, key="i_k")
+                glucose = lab4.number_input("Glucose (70-100 mg/dL)", 0, 1000, key="i_glu")
+                
+                lab5, lab6 = st.columns(2)
+                wbc = lab5.number_input("WBC (4.5-11.0 10^9/L)", 0.0, 50.0, key="i_wbc")
+                hgb = lab6.number_input("Hemoglobin (13.5-17.5 g/dL)", 0.0, 20.0, key="i_hgb")
+                
+                lab7, lab8 = st.columns(2)
+                platelets = lab7.number_input("Platelets (150-450 10^9/L)", 0, 1000, key="i_plt")
+                inr = lab8.number_input("INR (Clotting Time) [0.9-1.1]", 0.0, 10.0, key="i_inr")
+                
+                lactate = st.number_input("Lactate (Normal: < 2.0 mmol/L)", 0.0, 20.0, key="i_lac")
 
-        with col_right:
-            st.markdown("##### 🧪 Critical Labs")
-            lab1, lab2 = st.columns(2)
-            creat = lab1.number_input("Creatinine", 0.0, 20.0, value=float(ext.get('creat', 0.0)))
-            bun = lab2.number_input("BUN", 0, 100, value=int(ext.get('bun', 0)))
-            
-            lab3, lab4 = st.columns(2)
-            potassium = lab3.number_input("Potassium", 0.0, 10.0, value=float(ext.get('k', 0.0)))
-            glucose = lab4.number_input("Glucose", 0, 1000, value=int(ext.get('glucose', 0)))
-            
-            lab5, lab6 = st.columns(2)
-            wbc = lab5.number_input("WBC", 0.0, 50.0, value=float(ext.get('wbc', 0.0)))
-            hgb = lab6.number_input("Hgb", 0.0, 20.0, value=float(ext.get('hgb', 0.0)))
-            
-            lab7, lab8 = st.columns(2)
-            platelets = lab7.number_input("Platelets", 0, 1000, value=int(ext.get('plt', 0)))
-            inr = lab8.number_input("INR", 0.0, 10.0, value=float(ext.get('inr', 0.0)))
+                st.markdown("##### 📋 Medical History")
+                h1, h2 = st.columns(2)
+                anticoag = h1.checkbox("Anticoagulant Use", key="i_anticoag")
+                liver_disease = h2.checkbox("Liver Disease", key="i_liver")
+                
+                h3, h4 = st.columns(2)
+                heart_failure = h3.checkbox("Heart Failure", key="i_hf")
+                gi_bleed = h4.checkbox("History of GI Bleed", key="i_gi")
+                
+                m1, m2 = st.columns(2)
+                nsaid = m1.checkbox("NSAID Use", key="i_nsaid")
+                active_chemo = m2.checkbox("Active Chemo", key="i_chemo")
+                
+                m3, m4 = st.columns(2)
+                diuretic = m3.checkbox("Diuretic Use", key="i_diuretic")
+                acei = m4.checkbox("ACEi/ARB", key="i_acei")
+                
+                m5, m6 = st.columns(2)
+                insulin = m5.checkbox("Insulin", key="i_insulin")
+                hba1c_high = m6.checkbox("Uncontrolled Diabetes", key="i_a1c")
+                
+                altered_mental = st.checkbox("Altered Mental Status (Confusion)", key="i_ams")
+                pain = 0
 
-            st.markdown("##### 📋 Medical History")
-            h1, h2 = st.columns(2)
-            anticoag = h1.checkbox("Anticoagulant Use", value=ext.get('anticoagulant', False))
-            liver_disease = h2.checkbox("Liver Disease", value=ext.get('liver_disease', False))
+            st.write("") 
+            submitted = st.form_submit_button("🚀 Run Clinical Analysis", type="primary", use_container_width=True)
             
-            h3, h4 = st.columns(2)
-            heart_failure = h3.checkbox("Heart Failure", value=ext.get('heart_failure', False))
-            gi_bleed = h4.checkbox("History of GI Bleed", value=ext.get('gi_bleed', False))
-            
-            altered_mental = st.checkbox("Altered Mental Status", value=ext.get('altered_mental', False))
-
-        submitted = st.form_submit_button("🚀 Run Clinical Analysis", type="primary", use_container_width=True)
-
     # --- LOGIC & RESULTS ---
     if submitted:
         # Define weight_kg here so it's available for the rest of the function
@@ -172,42 +231,30 @@ def render_risk_calculator():
             shock_index = 0
             
         bun_creat_ratio = bun / creat if creat > 0 else 0
-        is_high_bp = 1 if sys_bp > 140 else 0
         
-# --- GLOBAL ZERO CHECK ---
         if age > 0 and sys_bp > 0:
-            # ---------------------------------------------------------
-            # NEW PIPELINE LOGIC
-            # ---------------------------------------------------------
-            # We explicitly map form variables to the EXACT feature names 
-            # defined in your 'train_model_pro.py' script.
+            # New Pipeline Logic
             input_df = pd.DataFrame({
                 'age': [age],
                 'inr': [inr],
-                'systolic_bp': [sys_bp],         # Renamed to match training feature 'systolic_bp'
+                'systolic_bp': [sys_bp],
                 'anticoagulant': [1 if anticoag else 0],
-                'gender': [gender],              # Pass raw "Male" or "Female" (Pipeline handles encoding)
+                'gender': [gender],
                 'liver_disease': [1 if liver_disease else 0]
             })
 
-            # Get Probability of Critical Risk (Class 1)
-            # The pipeline handles scaling & OneHotEncoding automatically.
-            # predict_proba returns [[Prob_Class_0, Prob_Class_1]]
             try:
                 pred_bleeding = bleeding_model.predict_proba(input_df)[0][1] * 100
             except AttributeError:
-                # Fallback if model is still the old Regressor (during transition)
                 pred_bleeding = float(bleeding_model.predict(input_df)[0])
 
-            # ---------------------------------------------------------
-            # EXISTING LOGIC (Unchanged)
-            # ---------------------------------------------------------
+            # Existing Calculations
             pred_aki = bk.calculate_aki_risk(age, diuretic, acei, sys_bp, active_chemo, creat, nsaid, heart_failure)
             pred_sepsis = bk.calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, final_temp_c)
             pred_hypo = bk.calculate_hypoglycemic_risk(insulin, (creat>1.3), hba1c_high, False)
             sirs_score = bk.calculate_sirs_score(final_temp_c, hr, resp_rate, wbc)
             
-            # HAS-BLED Calculator (Heuristic Check)
+            # HAS-BLED Calculator
             has_bled = 0
             if sys_bp > 160: has_bled += 1
             if creat > 2.2 or liver_disease: has_bled += 1
@@ -224,31 +271,29 @@ def render_risk_calculator():
             sirs_score = 0
             has_bled = 0
             
-        # Determine Status
         status_calc = 'Critical' if (pred_bleeding > 50 or pred_aki > 50 or pred_sepsis >= 2) else 'Stable'
         
-        # Save to Database
         bk.save_patient_to_db(age, gender, sys_bp, int(pred_aki), float(pred_bleeding), status_calc)
         
-        # Save ALL relevant data to session state for safe retrieval
-        st.session_state['patient_data'] = {
+        # Save results to session state
+        st.session_state['analysis_results'] = {
             'id': f"Patient-{age}-{int(sys_bp)}", 
             'age': age, 'gender': gender, 'weight': weight_kg,
             'sys_bp': sys_bp, 'dia_bp': dia_bp, 'hr': hr, 'resp_rate': resp_rate, 
-            'temp_c': temp_c, 'o2_sat': o2_sat, 'pain' : pain,
+            'temp_c': temp_c, 'o2_sat': o2_sat, 'pain': pain,
             'creat': creat, 'potassium': potassium, 'inr': inr, 'bun': bun,
             'wbc': wbc, 'hgb': hgb, 'platelets': platelets, 'lactate': lactate, 'glucose': glucose,
             'bleeding_risk': float(pred_bleeding), 'aki_risk': int(pred_aki),
             'sepsis_risk': int(pred_sepsis), 'hypo_risk': int(pred_hypo),
             'sirs_score': sirs_score, 'status': status_calc, 'map_val': map_val, 'bmi': bmi, 'has_bled': has_bled,
             'shock_index': shock_index, 'pulse_pressure': pulse_pressure, 'bun_creat_ratio': bun_creat_ratio,
-            # SAVE BOOLEANS FOR EXPLANATION LOGIC
             'anticoag': anticoag, 'liver_disease': liver_disease, 'diuretic': diuretic,
             'acei': acei, 'heart_failure': heart_failure, 'hba1c_high': hba1c_high,
             'altered_mental': altered_mental
         }
         
-        st.session_state['analysis_results'] = st.session_state['patient_data']
+        # Also update patient_data for dashboard
+        st.session_state['patient_data'] = st.session_state['analysis_results']
 
     # --- RESULTS DISPLAY ---
     if 'analysis_results' in st.session_state:
@@ -586,7 +631,25 @@ def render_risk_calculator():
                 st.info(st.session_state['ai_result'])
             else:
                 st.info("👈 Fill out the patient data form above and click 'Run Clinical Analysis' to see results.")
+    # --- AI CONSULT ---
+    st.divider()
+    c_ai, c_txt = st.columns([1, 3])
+    with c_ai:
+        st.markdown("#### 🤖 AI Assessment")
+        if st.button("⚡ Consult AI"):
+            with st.spinner("Thinking..."):
+                ai_context = {
+                    'age': res['age'], 'sbp': res['sys_bp'], 
+                    'bleeding_risk': res['bleeding_risk'], 'aki_risk': res['aki_risk'],
+                    'shock_index': res['shock_index']
+                }
+                response = bk.consult_ai_doctor("risk_assessment", "", ai_context)
+                st.session_state['ai_result'] = response
         
+    with c_txt:
+        if 'ai_result' in st.session_state:
+            st.info(st.session_state['ai_result'])
+                
 # --- MODULE 2: PATIENT HISTORY---
 def render_history_sql():
     st.subheader("🗄️ Patient History Database")
