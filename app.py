@@ -150,7 +150,7 @@ def render_risk_calculator():
         if st.form_submit_button("🚀 Run Clinical Analysis", use_container_width=True):
 
     # --- LOGIC & RESULTS ---
-        if submitted:
+    if submitted:
         final_temp_c = temp_c 
         
         # Calculate Hemodynamics
