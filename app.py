@@ -151,7 +151,16 @@ def render_risk_calculator():
 
     # --- LOGIC & RESULTS ---
     if submitted:
-        final_temp_c = temp_c 
+        # --- FIX: Define weight_kg and bmi before using them below ---
+        # Capture weight conversion logic here
+        weight_kg = weight_input * 0.453592 if weight_scale == "lbs" else weight_input
+        
+        if height > 0:
+            bmi = weight_kg / ((height/100)**2)
+        else:
+            bmi = 0.0
+
+        final_temp_c = temp_c
         
         # Calculate Hemodynamics
         if sys_bp > 0:
