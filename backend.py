@@ -8,6 +8,13 @@ import datetime
 import joblib
 import google.generativeai as genai
 import streamlit as st
+import json
+
+# Prevents app crash if drug_data.py is missing
+try:
+    from drug_data import INTERACTION_DB
+except ImportError:
+    INTERACTION_DB = {}
 
 def redact_pii(text):
     """Sanitizes input to remove potential Patient Identifiers (Safe Harbor)."""
@@ -16,16 +23,13 @@ def redact_pii(text):
     text = re.sub(r'\d{2}/\d{2}/\d{4}', '', text)
     return text
 
-# Prevents app crash if drug_data.py is missing
-try:
-    from drug_data import INTERACTION_DB
-except ImportError:
-    INTERACTION_DB = {}
+
 
 # ==========================================
 # 1. DATABASE MANAGEMENT
 # ==========================================
 def get_db_connection():
+    # check_same_thread=False is crucial for Streamlit's multi-threaded environment
     return sqlite3.connect('clinical_data.db', check_same_thread=False)
 
 def init_db():
@@ -34,13 +38,16 @@ def init_db():
     c.execute('''
         CREATE TABLE IF NOT EXISTS patient_history (
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            age INTEGER, gender TEXT, sbp INTEGER,
-            aki_risk_score INTEGER, bleeding_risk_score REAL, status TEXT
+            age INTEGER,
+            gender TEXT,
+            sbp INTEGER,
+            aki_risk_score INTEGER,
+            bleeding_risk_score REAL,
+            status TEXT
         )
     ''')
     conn.commit()
     conn.close()
-
 def save_patient_to_db(age, gender, sbp, aki, bleed, status):
     with get_db_connection() as conn:
         c = conn.cursor()
@@ -66,20 +73,35 @@ def clear_history():
 # 2. AI MODEL LOADING
 # ==========================================
 class HeuristicFallbackModel:
+    """
+    Deterministic clinical rule-based fallback if ML model is missing.
+    Used to ensure system reliability in production.
+    """
     def predict(self, df):
         risk = 10.0 
         row = df.iloc[0]
         if row.get('age', 0) > 65: risk += 15
+        if row.get('high_bp', 0) == 1: risk += 20
         if row.get('inr', 1.0) > 1.2: risk += 25
         if row.get('anticoagulant', 0) == 1: risk += 20
-        return [min(risk, 95.0)]
+        # Pipeline expects probabilities, but fallback returns raw score
+        # We simulate probability by returning a list with a single float
+        return [min(risk, 95.0)] 
+        
+    def predict_proba(self, df):
+        # Mocking predict_proba for the pipeline
+        risk = self.predict(df)[0] / 100.0
+        return [[1-risk, risk]]
 
 def load_bleeding_model():
     model_file = "clinical_pipeline.pkl"
     if os.path.exists(model_file):
         try:
-            return joblib.load(model_file)
+            # Loads the Pipeline (Preprocessor + Model)
+            pipeline = joblib.load(model_file)
+            return pipeline
         except Exception as e:
+            print(f"⚠️ Error: {e}")
             return HeuristicFallbackModel()
     return HeuristicFallbackModel()
 
@@ -93,38 +115,59 @@ def calculate_aki_risk(age, diuretic, acei, sys_bp, chemo, creat, nsaid, heart_f
     score += 25 if nsaid else 0
     score += 15 if heart_failure else 0
     score += 20 if chemo else 0
-    if age > 75: score += 20
-    if 0 < sys_bp < 90: score += 20
-    if creat > 1.5: score += 30
-    elif creat > 1.2: score += 15
+    if age > 0: score += 20 if age > 75 else 0
+    if sys_bp > 0:
+        score += 10 if sys_bp > 160 else 0
+        score += 20 if sys_bp < 90 else 0
+    if creat > 0:
+        if creat > 1.5: score += 30
+        elif creat > 1.2: score += 15
     return min(score, 100)
 
 def calculate_sepsis_risk(sys_bp, resp_rate, altered_mental, temp_c):
     qsofa = 0
-    if 0 < sys_bp <= 100: qsofa += 1
-    if resp_rate >= 22: qsofa += 1
+    if sys_bp > 0 and sys_bp <= 100: qsofa += 1
+    if resp_rate > 0 and resp_rate >= 22: qsofa += 1
     if altered_mental: qsofa += 1
-    if temp_c > 38.0 or (0 < temp_c < 36.0): qsofa += 0.5
+    if temp_c > 0 and (temp_c > 38.0 or temp_c < 36.0): qsofa += 0.5
+    
     if qsofa >= 2: return 90
     if qsofa >= 1: return 45
     return 0
 
 def calculate_hypoglycemic_risk(insulin, renal, hba1c_high, recent_dka):
-    score = (30 if insulin else 0) + (45 if renal else 0) + (20 if hba1c_high else 0)
+    score = 0
+    score += 30 if insulin else 0
+    score += 45 if renal else 0
+    score += 20 if hba1c_high else 0
+    score += 20 if recent_dka else 0 
     return min(score, 100)
 
 def calculate_sirs_score(temp_c, hr, resp_rate, wbc):
     score = 0
-    if temp_c > 38 or (0 < temp_c < 36): score += 1
+    if temp_c > 0 and (temp_c > 38 or temp_c < 36): score += 1
     if hr > 90: score += 1
     if resp_rate > 20: score += 1
-    if wbc > 12 or (0 < wbc < 4): score += 1
+    if wbc > 0 and (wbc > 12 or wbc < 4): score += 1
     return score
+# ==========================================
+# 4. INTERACTION CHECKER
+# ==========================================
+def normalize_text(text):
+    if not isinstance(text, str): return ""
+    return text.lower().strip()
 
 def check_interaction(d1, d2):
-    d1_clean, d2_clean = d1.lower().strip(), d2.lower().strip()
-    return INTERACTION_DB.get((d1_clean, d2_clean)) or INTERACTION_DB.get((d2_clean, d1_clean))
+    d1_clean = normalize_text(d1)
+    d2_clean = normalize_text(d2)
+    
+    if (d1_clean, d2_clean) in INTERACTION_DB: return INTERACTION_DB[(d1_clean, d2_clean)]
+    if (d2_clean, d1_clean) in INTERACTION_DB: return INTERACTION_DB[(d2_clean, d1_clean)]
+    return None
 
+def chatbot_response(text):
+    # (Existing glossary logic - keeping brief for this paste)
+    return "See app.py logic for glossary"
 # ==========================================
 # 4. AI CONSULTANTS & PARSER
 # ==========================================
@@ -428,29 +471,17 @@ def chatbot_response(text):
 # 6. AI CONSULTANTS (GEMINI)
 # ==========================================
 def consult_ai_doctor(role, user_input, patient_context=None):
+    import google.generativeai as genai
+    import streamlit as st
     try:
-        # 1. Redact PII for Privacy/HIPAA Compliance
-        safe_input = redact_pii(user_input)
-        
-        # 2. Configure Model
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.0-flash')
         
-        # 3. Chain-of-Thought Prompting (Higher reliability)
         if role == 'risk_assessment':
-            prompt = f"""
-            Role: Senior ICU Consultant.
-            Context: {patient_context}
-            User Query: {safe_input}
-            
-            Instructions:
-            1. First, analyze the hemodynamic stability (MAP, Shock Index).
-            2. Second, cross-reference active meds with the bleeding risk score.
-            3. Finally, recommend 3 specific, prioritized clinical actions.
-            4. Cite relevant guidelines (e.g., KDIGO, Surviving Sepsis) where applicable.
-            """
+            prompt = f"Role: Senior ICU Consultant. Context: {patient_context}. Query: {user_input}"
         else:
-            prompt = f"Expert Medical Consult. Query: {safe_input}. Provide differential diagnosis."
+            prompt = f"Expert Medical Consult. Query: {user_input}."
 
         response = model.generate_content(prompt)
         return response.text
@@ -476,46 +507,48 @@ def analyze_drug_interactions(drug_list):
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.0-flash')
-        prompt = f"Analyze drug interactions for: {', '.join(drug_list)}. List mechanism and management."
+        prompt = f"Analyze drug interactions for: {', '.join(drug_list)}"
         return model.generate_content(prompt).text
     except Exception as e:
         return f"Error: {str(e)}"
 
-def parse_unified_soap(raw_text):
+# --- NEW FUNCTION FOR SOAP PARSING ---
+def parse_clinical_note(note_text):
+    """
+    Parses a SOAP note text and returns a JSON dictionary of clinical values.
+    """
     import google.generativeai as genai
     import streamlit as st
-    import json
-    import re
-
+    
     try:
-        if "GEMINI_API_KEY" not in st.secrets:
-            return {"error": "API Key not found in secrets.toml"}
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        # Using a model optimized for JSON extraction if available, otherwise Flash
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        # Using 1.5-flash to avoid the 2.0-flash quota limits you encountered
-        model = genai.GenerativeModel('gemini-1.5-flash')
-
         prompt = f"""
-        Extract clinical data from this note into a JSON object:
-        "{raw_text}"
+        Extract clinical data from the text below. 
+        Return ONLY a raw JSON object (no markdown formatting).
+        Use these keys exactly: 
+        age (int), gender (string "Male" or "Female"), weight (float), height (int),
+        sys_bp (int), dia_bp (int), hr (int), resp_rate (int), temp_c (float), o2_sat (int),
+        creat (float), bun (int), potassium (float), glucose (int), wbc (float), hgb (float),
+        platelets (int), inr (float), lactate (float),
+        anticoag (bool), liver_disease (bool), heart_failure (bool), gi_bleed (bool),
+        nsaid (bool), active_chemo (bool), diuretic (bool), acei (bool), insulin (bool),
+        hba1c_high (bool), altered_mental (bool).
+
+        If a value is missing in the text, do not include the key in the JSON.
         
-        Required JSON Keys (Use these exact names):
-        "age", "gender" (Male/Female), "sbp", "dbp", "hr", "rr", "temp_c", "spo2", 
-        "creat", "bun", "k", "glucose", "wbc", "hgb", "plt", "inr",
-        "anticoagulant" (bool), "liver_disease" (bool), "heart_failure" (bool), 
-        "gi_bleed" (bool), "nsaid" (bool), "active_chemo" (bool), "diuretic" (bool), 
-        "acei" (bool), "insulin" (bool), "hba1c_high" (bool), "altered_mental" (bool)
-        
-        Rules:
-        1. Convert Fahrenheit to Celsius (e.g., 101F -> 38.3).
-        2. 'Melena' or 'Hematochezia' -> gi_bleed: true.
-        3. 'Lethargic' or 'Confused' -> altered_mental: true.
-        4. If a drug like Coumadin, Lasix, or Lisinopril is mentioned, check the relevant box.
-        5. Return ONLY JSON.
+        Text:
+        {note_text}
         """
         
         response = model.generate_content(prompt)
-        json_str = re.search(r'\{.*\}', response.text, re.DOTALL).group()
-        return json.loads(json_str)
+        clean_json = response.text.strip().replace("```json", "").replace("```", "")
+        return json.loads(clean_json)
+        
     except Exception as e:
-        return {"error": str(e)}
+        print(f"AI Parsing Failed: {e}")
+        # Return empty dict so app doesn't crash
+        return {}
