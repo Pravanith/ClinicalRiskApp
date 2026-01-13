@@ -71,27 +71,10 @@ def render_cover_page():
 # --- MODULE 1: RISK CALCULATOR ---
 def render_risk_calculator():
     st.subheader("Acute Risk Calculator")
-    
-    # --- 1. THE MASTER AI BOX ---
-    with st.container(border=True):
-        st.markdown("#### 🤖 Master AI SOAP Parser")
-        raw_soap = st.text_area("Paste clinical note here:", height=100)
-        if st.button("✨ Auto-Fill Calculator", use_container_width=True):
-            if raw_soap:
-                with st.spinner("AI Extracting clinical values..."):
-                    res = bk.parse_unified_soap(raw_soap)
-                    if "error" not in res:
-                        st.session_state['soap_data'] = res
-                        st.success("Form updated successfully!")
-                        st.rerun()
-                    else: st.error(res['error'])
 
     # Get data from session state (defaults to empty dict if nothing parsed yet)
     ext = st.session_state.get('soap_data', {})
 
-    # --- 2. THE FORM WITH AI MAPPINGS ---
-    def render_risk_calculator():
-    st.subheader("Acute Risk Calculator")
     
     # --- 1. THE MASTER AI BOX ---with st.container(border=True):
         st.markdown("#### 🤖 Master AI SOAP Parser")
