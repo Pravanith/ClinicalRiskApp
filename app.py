@@ -89,7 +89,7 @@ def render_risk_calculator():
     st.markdown("#### 🤖 Master AI SOAP Parser")
     soap_text = st.text_area("Paste clinical note here:", height=100, placeholder="e.g. 65yo Male presenting with fever. BP 140/90, HR 110...")
     
-    if st.button("✨ Auto-Fill Calculator", use_container_width=True):
+    if st.button("✨ Auto-Fill Calculator", key="soap_autofill_btn", use_container_width=True):
         if soap_text:
             with st.spinner("Parsing clinical data..."):
                 extracted = bk.parse_clinical_note(soap_text)
