@@ -9,7 +9,6 @@ import joblib
 import google.generativeai as genai
 import streamlit as st
 import json
-from clawdbot import explain_risk, clinician_note
 
 # Prevents app crash if drug_data.py is missing
 try:
